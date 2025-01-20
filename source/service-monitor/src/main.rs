@@ -63,27 +63,14 @@ fn main() {
             //
             if sm_scheme.1 == 1 {
                 let pid: usize = gtrand.id().try_into().unwrap();
+                println!("trying to kill pid {pid:#?}");
                 let killRet = syscall::call::kill(pid + 2, syscall::SIGKILL);
             }
-            ///let readbuf: &mut [u8] = &mut [0];
-            //if let Ok(randd) = &mut File::open("gtrand:") {
-            //    let _read_randd = File::read(randd, readbuf).expect("no rand :(");
-            //    let rand = readbuf[0];
-            //    if (rand % 42 == 0) {
-            ////        //let output = std::process::Command::new("dd")
-            ////        //    .args(["if=/scheme/buzz", "of=/scheme/gtdemo", "count=5"])
-            ////        //    .output().expect("failed to execute dd command");
-            ////        //let out_log = output.stdout;
-            ////        let pid: usize = gtrand.id().try_into().unwrap();
-            ////        let killRet = syscall::call::kill(pid + 2, syscall::SIGKILL);
-            //        info!("rand: {rand:#?} is divisible by 42");
-            //        File::close(randd);
-            ////        //info!("{out_log:#?}");
-            //    }
-            ////    
-            //} else {
-            //    error!("gtrand not found! is it runnning?")
-            //}
+
+            if sm_scheme.1 == 2 {
+                gtrand = std::process::Command::new("gtrand").spawn().expect("failed to start gtrand");
+            }
+
             // The following is for handling requests to the SM
             // Redox does timers with the timer scheme according to docs https://doc.redox-os.org/book/event-scheme.html
             // not sure if that is still how it works or not, but seems simmilar to this code

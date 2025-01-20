@@ -33,14 +33,20 @@ impl SchemeMut for SMScheme {
 
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
          //if buf contains "stop" set command = 1
-        println!("SERVICEMONITOR READ BUF: {buffer:#?}");
-        let stop: &[u8] = &buffer[0..3];
+        //println!("SERVICEMONITOR READ BUF: {buffer:#?}");
+        let stop: &[u8] = &buffer[0..4];
+        let start: &[u8] = &buffer[0..5];
         let mut r = 0;
-        if (buffer == [b's', b't', b'o', b'p']) {
+        println!("SERVICEMONITOR READ BUF: {buffer:#?}, stop: {stop:#?}, start {start:#?}");
+        if stop == [b's', b't', b'o', b'p'] {
             self.1 = 1;
-            self.2 = *b"gtrand          ";
             r = 1;
         }
+        if start == [b's', b't', b'a', b'r', b't'] {
+            self.1 = 2;
+            r = 2;
+        }
+
         Ok(r)       
     }
 
