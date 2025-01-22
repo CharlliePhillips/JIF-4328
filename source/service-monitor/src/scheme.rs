@@ -5,11 +5,10 @@ use log::info;
 use redox_scheme::SchemeMut;
 use syscall::{error::*, MODE_CHR};
 
-use crate::Ty;
 //use std::fs::File;
 // Ty is to leave room for other types of monitor schemes
 // maybe an int or enum for the command, string buffer for service name?
-pub struct SMScheme(pub Ty, pub u32, pub [u8; 16]);
+pub struct SMScheme(pub u32, pub [u8; 16]);
 
 impl SchemeMut for SMScheme {
 
@@ -32,19 +31,25 @@ impl SchemeMut for SMScheme {
 
 
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-         //if buf contains "stop" set command = 1
-        //println!("SERVICEMONITOR READ BUF: {buffer:#?}");
-        let stop: &[u8] = &buffer[0..4];
-        let start: &[u8] = &buffer[0..5];
+        //if buf contains "stop" set command = 1
         let mut r = 0;
-        println!("SERVICEMONITOR READ BUF: {buffer:#?}, stop: {stop:#?}, start {start:#?}");
-        if stop == [b's', b't', b'o', b'p'] {
-            self.1 = 1;
-            r = 1;
-        }
-        if start == [b's', b't', b'a', b'r', b't'] {
-            self.1 = 2;
-            r = 2;
+        //println!("service-monitor command buffer: {buffer:#?}");
+
+        match buffer {
+            b"stop" => {
+                self.0 = 1;
+                r = 1;
+            }
+
+            b"start" => {
+                self.0 = 2;
+                r = 2;
+            }
+
+            _ => {
+                self.0 = 0;
+                r = 0;
+            }
         }
 
         Ok(r)       
@@ -61,7 +66,7 @@ impl SchemeMut for SMScheme {
     }
 
     fn fpath(&mut self, _id: usize, buf: &mut [u8]) -> Result<usize> {
-        let scheme_path = b"service-monitor";
+        let scheme_path = b"/scheme/service-monitor";
         let size = std::cmp::min(buf.len(), scheme_path.len());
 
         buf[..size].copy_from_slice(&scheme_path[..size]);

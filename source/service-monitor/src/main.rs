@@ -9,9 +9,6 @@ use chrono;
 use std::sync::mpsc::channel;
 mod scheme;
 
-enum Ty {
-    SM,
-}
 
 fn main() {
     let _ = RedoxLogger::new()
@@ -21,64 +18,79 @@ fn main() {
             .with_ansi_escape_codes()
             .build()
     )
-    .with_process_name("SM".into())
+    .with_process_name("service-monitor".into())
     .enable();
-    info!("SM logger started");
+    info!("service-monitor logger started");
     
-    //get arg 0 (name used to start)
-    let ty = match &*std::env::args().next().unwrap() {
-        "service-monitor_service-monitor" => Ty::SM,
-        _ => panic!("Service monitor needs to be called as 'service-monitor_service-monitor' we prolly gotta figure out how to fix this"),
-    };
-        //start dependencies:
-        //let _gtdemo = std::process::Command::new("gtdemo").stdout(Stdio::inherit()).spawn().expect("failed to start gtdemo");
-        let mut gtrand = std::process::Command::new("gtrand").spawn().expect("failed to start gtrand");
-        //let buzz = std::process::Command::new("buzz").spawn().expect("failed to start buzz");
-        warn!("gtrand: {gtrand:#?}");
-        
-        //warn!("buzz: {buzz:#?}");
+
+    //start dependencies, should they be stored as a list/vector of 'process::Child'?
+    let mut gtrand = std::process::Command::new("gtrand").spawn().expect("failed to start gtrand");
+    // TODO make this condition part of the list/vec of services
+    let mut gtrand_r: bool = true;
+    
+    info!("started gtrand with pid: {:#?}", gtrand.id() + 2);
     
     redox_daemon::Daemon::new(move |daemon| {
-        let name = match ty {
-            Ty::SM => "service-monitor_service-monitor",
-        };
-        let socket = Socket::<V2>::create(name).expect("sm: failed to create Service Monitor scheme");
+        let name = "service-monitor";
+        let socket = Socket::<V2>::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
         // note the placeholder services vector
-        let mut sm_scheme = SMScheme(ty, 0, [0; 16]);
+        let mut sm_scheme = SMScheme(0, [0; 16]);
         
-        //note: this must be set (1, 1) for Service Monitor to be able to read from randd
-        libredox::call::setrens(1, 1).expect("sm: failed to enter null namespace");
-        daemon.ready().expect("sm: failed to notify parent");
-        
-
+        daemon.ready().expect("service-monitor: failed to notify parent");
         loop {
-            // parse registry for updates, this could be skipped while running if no request to edit the registry is pending
+            /*
+            TODO parse registry for updates, this could be skipped while running if no request to edit the registry is pending
 
-            // if a new entry is found then add it to the services vector in the SM scheme
-            // if there is only one entry then check if it is the placeholder and change it
-            // if it's the last service being removed then replace with placeholder
+             if a new entry is found then add it to the services vector in the SM scheme
+             if there is only one entry then check if it is the placeholder and change it
+             if it's the last service being removed then replace with placeholder
 
-            // now that the services vector is updated use the information to start the list
-            //
-            if sm_scheme.1 == 1 {
-                let pid: usize = gtrand.id().try_into().unwrap();
-                println!("trying to kill pid {pid:#?}");
-                let killRet = syscall::call::kill(pid + 2, syscall::SIGKILL);
+             once the services vector is updated use the information to start the list
+            */
+            
+            // check if the service-monitor's command value has been changed.
+            // stop: check if service is running, if it is then get pid and stop
+            if sm_scheme.0 == 1 && gtrand_r {
+               let mut pid: usize = gtrand.id().try_into().unwrap();
+                //for some reason the pid from 'ps' is different (normally 2 higher) than .id() returns?
+                pid += 2;
+                info!("trying to kill pid {pid:#?}");
+                let killRet = syscall::call::kill(pid, syscall::SIGKILL);
+                gtrand_r = false;
+            } else if sm_scheme.0 == 1 {
+                warn!("gtrand is already stopped");
             }
-
-            if sm_scheme.1 == 2 {
-                gtrand = std::process::Command::new("gtrand").spawn().expect("failed to start gtrand");
+            // start: check if service is running, if not build command from registry and start
+            if sm_scheme.0 == 2  && !gtrand_r {
+                // can add args here later with '.arg()'
+                gtrand = match std::process::Command::new("gtrand").spawn() {
+                    Ok(child) => {
+                        info!("child started with pid: {:#?}", child.id() + 2);
+                        gtrand_r = true;
+                        child
+                    },
+                    
+                    Err(e) => {
+                        warn!("could not start gtrand");
+                        gtrand
+                    }
+                };
+            } else if sm_scheme.0 == 2 {
+                warn!("gtrand is already running");
             }
+            //reset the current command value
+            sm_scheme.0 = 0;
 
-            // The following is for handling requests to the SM
+
+            // The following is for handling requests to the SM scheme
             // Redox does timers with the timer scheme according to docs https://doc.redox-os.org/book/event-scheme.html
             // not sure if that is still how it works or not, but seems simmilar to this code
             // get request 
              
             let Some(request) = socket
                 .next_request(SignalBehavior::Restart)
-                .expect("sm: failed to read events from Service Moniotr scheme")
+                .expect("service-monitor: failed to read events from Service Moniotr scheme")
             else {
                 warn!("exiting Service Monitor");
                 std::process::exit(0);
@@ -91,12 +103,12 @@ fn main() {
                     let response = request.handle_scheme_mut(&mut sm_scheme);
                     socket
                         .write_responses(&[response], SignalBehavior::Restart)
-                        .expect("sm: failed to write responses to Service Monitor scheme");
+                        .expect("service-monitor: failed to write responses to Service Monitor scheme");
 
                 }
                 _ => (),
             }
         }
     })
-    .expect("sm: failed to daemonize");
+    .expect("service-monitor: failed to daemonize");
 }
