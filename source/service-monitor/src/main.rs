@@ -2,12 +2,18 @@ use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SchemeBlockMut, SchemeMut, SignalBehavior, Socket, V2};
-use std::{borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Command, Stdio}};
+use std::{borrow::BorrowMut, collections::BTreeMap, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
 use scheme::{SMScheme};
 use timer;
 use chrono;
 use std::sync::mpsc::channel;
 mod scheme;
+
+struct ServiceEntry {
+    name: String,
+    running: bool,
+    pid: usize,
+}
 
 
 fn main() {
@@ -22,21 +28,47 @@ fn main() {
     .enable();
     info!("service-monitor logger started");
     
+    // make list of managed services
+    let mut services: BTreeMap<String, ServiceEntry> = BTreeMap::new();
 
-    //start dependencies, should they be stored as a list/vector of 'process::Child'?
-    let mut gtrand = std::process::Command::new("gtrand").spawn().expect("failed to start gtrand");
-    // TODO make this condition part of the list/vec of services
-    let mut gtrand_r: bool = true;
+    let name: String = String::from("gtrand");
+    let gtrand_entry = ServiceEntry {
+        name: name.clone(),
+        running: false,
+        pid: 0,
+        // scheme fd?
+    };
+    services.insert(name, gtrand_entry);
+
+    // start dependencies
+    for service in services.values_mut() {
+        let name: &str = service.name.as_str();
+        let mut child_service: Child = std::process::Command::new(name).spawn().expect("failed to start gtrand");
+        service.running = true;
+        
+        // daemonization process makes this id not the actual one we need
+        // but it is two most of the time?
+        let mut pid: usize = child_service.id().try_into().unwrap();
+        pid += 2;
+        service.pid = pid;
+        // TODO once pid can be read from scheme
+        // fd = open(/scheme/<name>)
+        // buf = "pid"
+        // pid = write(fd, "pid")
+        info!("started {} with pid: {:#?}", name, pid);
+    }
     
-    info!("started gtrand with pid: {:#?}", gtrand.id() + 2);
     
     redox_daemon::Daemon::new(move |daemon| {
         let name = "service-monitor";
         let socket = Socket::<V2>::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
-        // note the placeholder services vector
-        let mut sm_scheme = SMScheme(0, [0; 16]);
+        let mut sm_scheme = SMScheme{
+            cmd: 0,
+            arg1: String::from(""),
+        };
         
+        info!("service-monitor daemonized with pid: {}", std::process::id());
         daemon.ready().expect("service-monitor: failed to notify parent");
         loop {
             /*
@@ -51,37 +83,43 @@ fn main() {
             
             // check if the service-monitor's command value has been changed.
             // stop: check if service is running, if it is then get pid and stop
-            if sm_scheme.0 == 1 && gtrand_r {
-               let mut pid: usize = gtrand.id().try_into().unwrap();
-                //for some reason the pid from 'ps' is different (normally 2 higher) than .id() returns?
-                pid += 2;
-                info!("trying to kill pid {pid:#?}");
-                let killRet = syscall::call::kill(pid, syscall::SIGKILL);
-                gtrand_r = false;
-            } else if sm_scheme.0 == 1 {
-                warn!("gtrand is already stopped");
+            if sm_scheme.cmd == 1 {
+                if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+                    if service.running {
+                        info!("trying to kill pid {}", service.pid);
+                        let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
+                        service.running = false;
+                    } else {
+                        warn!("stop failed: {} was already stopped", service.name);
+                    }
+                } else {
+                    warn!("stop failed: no service named '{}'", sm_scheme.arg1);
+                }
             }
             // start: check if service is running, if not build command from registry and start
-            if sm_scheme.0 == 2  && !gtrand_r {
-                // can add args here later with '.arg()'
-                gtrand = match std::process::Command::new("gtrand").spawn() {
-                    Ok(child) => {
-                        info!("child started with pid: {:#?}", child.id() + 2);
-                        gtrand_r = true;
-                        child
-                    },
-                    
-                    Err(e) => {
-                        warn!("could not start gtrand");
-                        gtrand
-                    }
-                };
-            } else if sm_scheme.0 == 2 {
-                warn!("gtrand is already running");
-            }
-            //reset the current command value
-            sm_scheme.0 = 0;
+            if sm_scheme.cmd == 2  {
+                let service: &mut ServiceEntry;
+                if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+                    // can add args here later with '.arg()'
+                    match std::process::Command::new(service.name.as_str()).spawn() {
+                        Ok(child) => {
+                            service.pid = child.id().try_into().unwrap();
+                            service.pid += 2;
+                            info!("child started with pid: {:#?}", service.pid);
+                            service.running = true;
+                        },
 
+                        Err(e) => {
+                            warn!("start failed: could not start {}", service.name);
+                        }
+                    };
+                } else {
+                    warn!("start failed: no service named '{}'", sm_scheme.arg1);
+                }
+            } 
+            //reset the current command value
+            sm_scheme.cmd = 0;
+            sm_scheme.arg1 = "".to_string();
 
             // The following is for handling requests to the SM scheme
             // Redox does timers with the timer scheme according to docs https://doc.redox-os.org/book/event-scheme.html

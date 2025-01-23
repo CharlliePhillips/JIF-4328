@@ -4,23 +4,28 @@ use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
 fn main() {
     //https://rust-cli.github.io/book/tutorial/cli-args.html
     let arg1 = std::env::args().nth(1).expect("no arg1 given");
-    let arg1l = arg1.len();
-    
-    let mut cmd_buf: &[u8];
+    println!("arg1: {}", arg1);
+    let mut cmd_buf: Vec<u8> = arg1.clone().into_bytes();
 
     match arg1.as_str() {
         "stop" => {
-            cmd_buf = b"stop";
+            let arg2 = std::env::args().nth(2).expect("no arg2 given");
+            for b in format!(" {};", arg2).as_bytes() {
+                cmd_buf.push(*b);
+            }
         }
 
         "start" => {
-            cmd_buf = b"start";
+            let arg2 = std::env::args().nth(2).expect("no arg2 given");
+            for b in format!(" {};", arg2).as_bytes() {
+                cmd_buf.push(*b);
+            }
         }
         _ => {
             println!("invalid arguments arg1: {:?}", arg1);
             return;
         }
-    }
+    };
 
     let Ok(sm_fd) = &mut OpenOptions::new().write(true)
     .open("/scheme/service-monitor") else {panic!()};

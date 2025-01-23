@@ -8,7 +8,12 @@ use syscall::{error::*, MODE_CHR};
 //use std::fs::File;
 // Ty is to leave room for other types of monitor schemes
 // maybe an int or enum for the command, string buffer for service name?
-pub struct SMScheme(pub u32, pub [u8; 16]);
+
+
+pub struct SMScheme {
+    pub cmd: u32, 
+    pub arg1: String,
+}
 
 impl SchemeMut for SMScheme {
 
@@ -35,19 +40,30 @@ impl SchemeMut for SMScheme {
         let mut r = 0;
         //println!("service-monitor command buffer: {buffer:#?}");
 
-        match buffer {
-            b"stop" => {
-                self.0 = 1;
+        match &buffer[0..5] {
+            b"stop " => {
+                self.cmd = 1;
+                let mut idx: usize = 5;
+                while(buffer[idx] != b';') {
+                    self.arg1.push(buffer[idx] as char);
+                    idx += 1;
+                }
+                
                 r = 1;
             }
 
             b"start" => {
-                self.0 = 2;
+                self.cmd = 2;
+                let mut idx: usize = 6;
+                while(buffer[idx] != b';') {
+                    self.arg1.push(buffer[idx] as char);
+                    idx += 1;
+                }
                 r = 2;
             }
 
             _ => {
-                self.0 = 0;
+                self.cmd = 0;
                 r = 0;
             }
         }
