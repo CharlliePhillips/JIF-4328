@@ -3,3 +3,6 @@ name = "services"
 version = "0.0.0"
 authors = ["Charlie Phillips <charlie_l_phillips@proton.me>", ]
 edition = "2021"
+
+[dependencies]
+libredox = "0.1.3"

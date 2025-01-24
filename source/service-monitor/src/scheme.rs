@@ -1,13 +1,19 @@
 use std::os::fd;
-
+use std::{borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Command, Stdio}};
+use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
 use log::info;
 use redox_scheme::SchemeMut;
 use syscall::{error::*, MODE_CHR};
 
-use crate::Ty;
+//use std::fs::File;
 // Ty is to leave room for other types of monitor schemes
-// Vec is the list of currently running services
-pub struct SMScheme(pub Ty, pub Vec<(usize, [u8; 32])>);
+// maybe an int or enum for the command, string buffer for service name?
+
+
+pub struct SMScheme {
+    pub cmd: u32, 
+    pub arg1: String,
+}
 
 impl SchemeMut for SMScheme {
 
@@ -30,7 +36,39 @@ impl SchemeMut for SMScheme {
 
 
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        Ok(0)
+        //if buf contains "stop" set command = 1
+        let mut r = 0;
+        //println!("service-monitor command buffer: {buffer:#?}");
+
+        match &buffer[0..5] {
+            b"stop " => {
+                self.cmd = 1;
+                let mut idx: usize = 5;
+                while(buffer[idx] != b';') {
+                    self.arg1.push(buffer[idx] as char);
+                    idx += 1;
+                }
+                
+                r = 1;
+            }
+
+            b"start" => {
+                self.cmd = 2;
+                let mut idx: usize = 6;
+                while(buffer[idx] != b';') {
+                    self.arg1.push(buffer[idx] as char);
+                    idx += 1;
+                }
+                r = 2;
+            }
+
+            _ => {
+                self.cmd = 0;
+                r = 0;
+            }
+        }
+
+        Ok(r)       
     }
 
     fn fcntl(&mut self, _id: usize, _cmd: usize, _arg: usize) -> Result<usize> {
@@ -44,7 +82,7 @@ impl SchemeMut for SMScheme {
     }
 
     fn fpath(&mut self, _id: usize, buf: &mut [u8]) -> Result<usize> {
-        let scheme_path = b"sm:";
+        let scheme_path = b"/scheme/service-monitor";
         let size = std::cmp::min(buf.len(), scheme_path.len());
 
         buf[..size].copy_from_slice(&scheme_path[..size]);
