@@ -119,8 +119,11 @@ fn main() {
             }
 
             if sm_scheme.cmd == 3  {
-                let service: &mut ServiceEntry;
-                warn!("List request recieved");
+                let mut pids: Vec<usize> = Vec::new();
+                for service in services.values() {
+                    pids.push(service.pid);
+                }
+                warn!("List request received, PIDs: {:?}", pids);
             } 
 
 
