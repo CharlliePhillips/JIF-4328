@@ -30,6 +30,14 @@ impl SchemeMut for SMScheme {
     }
 
     fn read(&mut self, _file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+        //if self.cmd == 3 {
+        //  for each 8 bytes in buf:
+        //      buf[8 bytes] = pid; (usize = 64 bits or 8 bytes)
+        //  Ok(buf.length())
+        //}
+        // in services/main.rs smth like
+        // Ok(buffer_size) = read(sm_fd, pid_buffer)
+        // for each 8 bytes in pid_buffer print as usize;
         Ok(0)
     }
 
