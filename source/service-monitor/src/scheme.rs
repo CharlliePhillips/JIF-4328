@@ -62,6 +62,12 @@ impl SchemeMut for SMScheme {
                 r = 2;
             }
 
+            b"list " => {
+                self.cmd = 3;
+                r = 3;
+            }
+
+
             _ => {
                 self.cmd = 0;
                 r = 0;

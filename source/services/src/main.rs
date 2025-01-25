@@ -21,6 +21,13 @@ fn main() {
                 cmd_buf.push(*b);
             }
         }
+
+        "list" => {
+            for b in format!(" ;").as_bytes() {
+                cmd_buf.push(*b);
+            }
+        }
+
         _ => {
             println!("invalid arguments arg1: {:?}", arg1);
             return;

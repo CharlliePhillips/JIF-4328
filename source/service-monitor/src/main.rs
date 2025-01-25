@@ -116,7 +116,14 @@ fn main() {
                 } else {
                     warn!("start failed: no service named '{}'", sm_scheme.arg1);
                 }
+            }
+
+            if sm_scheme.cmd == 3  {
+                let service: &mut ServiceEntry;
+                warn!("List request recieved");
             } 
+
+
             //reset the current command value
             sm_scheme.cmd = 0;
             sm_scheme.arg1 = "".to_string();
