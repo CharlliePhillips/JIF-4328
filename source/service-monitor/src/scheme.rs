@@ -13,6 +13,7 @@ use syscall::{error::*, MODE_CHR};
 pub struct SMScheme {
     pub cmd: u32, 
     pub arg1: String,
+    pub pid_buffer: Vec<u8>, //used in list, could be better as the BTreeMap from service-monitor later?
 }
 
 impl SchemeMut for SMScheme {
@@ -38,7 +39,18 @@ impl SchemeMut for SMScheme {
         // in services/main.rs smth like
         // Ok(buffer_size) = read(sm_fd, pid_buffer)
         // for each 8 bytes in pid_buffer print as usize;
-        Ok(0)
+        //Ok(0)
+
+        //info!("Read called with cmd: {}", self.cmd);
+        if self.cmd == 3 {
+            let size = std::cmp::min(buf.len(), self.pid_buffer.len());
+            buf[..size].copy_from_slice(&self.pid_buffer[..size]);
+            info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
+            self.cmd = 0;
+            Ok(size)
+        } else {
+            Ok(0)
+        } 
     }
 
 
