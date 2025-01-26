@@ -13,6 +13,8 @@ use syscall::{error::*, MODE_CHR};
 pub struct SMScheme {
     pub cmd: u32, 
     pub arg1: String,
+    //pub services: BTreeMap<String,ServiceEntry>,
+    //update constructor in main.rs as well
 }
 
 impl SchemeMut for SMScheme {
