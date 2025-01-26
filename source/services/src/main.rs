@@ -26,7 +26,6 @@ fn main() {
             for b in format!(" ;").as_bytes() {
                 cmd_buf.push(*b);
             }
-            
         }
 
         _ => {

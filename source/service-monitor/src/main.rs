@@ -57,8 +57,10 @@ fn main() {
         // pid = write(fd, "pid")
         info!("started {} with pid: {:#?}", name, pid);
     }
-    
-    
+
+
+
+
     redox_daemon::Daemon::new(move |daemon| {
         let name = "service-monitor";
         let socket = Socket::<V2>::create(name).expect("service-monitor: failed to create Service Monitor scheme");
@@ -123,7 +125,13 @@ fn main() {
                 for service in services.values() {
                     pids.push(service.pid);
                 }
-                warn!("List request received, PIDs: {:?}", pids);
+                info!("List request received, PIDs: {:?}", pids);
+                let mut bytes: Vec<u8> = Vec::new();
+                for pid in pids {
+                    let pid_u32 = pid as u32;
+                    bytes.extend_from_slice(&pid_u32.to_ne_bytes());
+                }
+                info!("PIDs as bytes: {:?}", bytes);
             } 
 
 
