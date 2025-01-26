@@ -67,7 +67,7 @@ fn main() {
         let mut sm_scheme = SMScheme{
             cmd: 0,
             arg1: String::from(""),
-            pid_buffer: Vec::new(),
+            pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
         };
         
         info!("service-monitor daemonized with pid: {}", std::process::id());
