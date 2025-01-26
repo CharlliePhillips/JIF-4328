@@ -1,5 +1,5 @@
 [build]
 template = "custom"
 script = """
-cookbook_cargo_packages service-monitor services
+cookbook_cargo_packages service-monitor services gtrand
 """

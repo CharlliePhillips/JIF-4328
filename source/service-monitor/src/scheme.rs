@@ -30,6 +30,8 @@ impl SchemeMut for SMScheme {
     }
 
     fn read(&mut self, _file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+        //if self.cmd == 3 (for list)
+        //for each 8 bytes in buf (because)
         Ok(0)
     }
 
@@ -61,6 +63,11 @@ impl SchemeMut for SMScheme {
                 }
                 r = 2;
             }
+
+            //list => {
+            // self.cmd = 3;
+            //}
+            //maybe some other stuff?
 
             _ => {
                 self.cmd = 0;
