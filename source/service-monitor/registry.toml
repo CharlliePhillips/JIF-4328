@@ -1,0 +1,13 @@
+[[service]]
+name = "zerod"
+type = "daemon"
+args = []
+manual_override = false
+depends = []
+
+[[service]]
+name = "gtrand"
+type = "daemon"
+args = [ "0" ]
+manual_override = true
+depends = []
