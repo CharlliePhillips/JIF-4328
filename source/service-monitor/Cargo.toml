@@ -13,3 +13,5 @@ log = "0.4.22"
 redox-log = "0.1.4"
 timer = "0.2.0"
 chrono = "0.4.39"
+toml = "0.8.19"
+serde = { version="1.0.217", features=["derive"] }

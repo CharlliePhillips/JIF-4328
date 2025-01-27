@@ -8,13 +8,15 @@ use timer;
 use chrono;
 use std::sync::mpsc::channel;
 mod scheme;
+mod registry;
+use registry::{read_registry, ServiceEntry};
 
-struct ServiceEntry {
-    name: String,
-    running: bool,
-    pid: usize,
-    scheme_path: String
-}
+//struct ServiceEntry {
+//    name: String,
+//    running: bool,
+//    pid: usize,
+//    scheme_path: String
+//}
 
 fn main() {
     let _ = RedoxLogger::new()
@@ -29,16 +31,7 @@ fn main() {
     info!("service-monitor logger started");
     
     // make list of managed services
-    let mut services: BTreeMap<String, ServiceEntry> = BTreeMap::new();
-
-    let name: String = String::from("service-monitor_gtrand");
-    let gtrand_entry = ServiceEntry {
-        name: name.clone(),
-        running: false,
-        pid: 0,
-        scheme_path: String::from("/scheme/gtrand")
-    };
-    services.insert(name, gtrand_entry);
+    let mut services: BTreeMap<String, ServiceEntry> = read_registry();
 
     // start dependencies
     for service in services.values_mut() {
