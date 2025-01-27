@@ -13,8 +13,8 @@ struct ServiceEntry {
     name: String,
     running: bool,
     pid: usize,
+    scheme_path: String
 }
-
 
 fn main() {
     let _ = RedoxLogger::new()
@@ -31,25 +31,29 @@ fn main() {
     // make list of managed services
     let mut services: BTreeMap<String, ServiceEntry> = BTreeMap::new();
 
-    let name: String = String::from("gtrand");
+    let name: String = String::from("service-monitor_gtrand");
     let gtrand_entry = ServiceEntry {
         name: name.clone(),
         running: false,
         pid: 0,
-        // scheme fd?
+        scheme_path: String::from("/scheme/gtrand")
     };
     services.insert(name, gtrand_entry);
 
     // start dependencies
     for service in services.values_mut() {
         let name: &str = service.name.as_str();
-        let mut child_service: Child = std::process::Command::new(name).spawn().expect("failed to start gtrand");
+        let mut child_service: Child = std::process::Command::new(name).spawn().expect("failed to start child service");
+        child_service.wait();
         service.running = true;
         
         // daemonization process makes this id not the actual one we need
         // but it is two most of the time?
-        let mut pid: usize = child_service.id().try_into().unwrap();
-        pid += 2;
+        let Ok(child_scheme) = &mut OpenOptions::new().write(true)
+        .open(service.scheme_path.clone()) else {panic!()};
+        let pid_req = b"pid";
+        let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
+        //pid += 2;
         service.pid = pid;
         // TODO once pid can be read from scheme
         // fd = open(/scheme/<name>)
@@ -103,13 +107,18 @@ fn main() {
             }
             // start: check if service is running, if not build command from registry and start
             if sm_scheme.cmd == 2  {
-                let service: &mut ServiceEntry;
                 if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                     // can add args here later with '.arg()'
                     match std::process::Command::new(service.name.as_str()).spawn() {
-                        Ok(child) => {
-                            service.pid = child.id().try_into().unwrap();
-                            service.pid += 2;
+                        Ok(mut child) => {
+                            //service.pid = child.id().try_into().unwrap();
+                            //service.pid += 2;
+                            child.wait();
+                            let Ok(child_scheme) = &mut OpenOptions::new().write(true)
+                            .open(service.scheme_path.clone()) else {panic!()};
+                            let pid_req = b"pid";
+                            let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
+                            service.pid = pid;
                             info!("child started with pid: {:#?}", service.pid);
                             service.running = true;
                         },
