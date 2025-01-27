@@ -13,6 +13,7 @@ use syscall::{error::*, MODE_CHR};
 pub struct SMScheme {
     pub cmd: u32, 
     pub arg1: String,
+    pub pid_buffer: Vec<u8>, //used in list, could be better as the BTreeMap from service-monitor later?
 }
 
 impl SchemeMut for SMScheme {
@@ -30,9 +31,26 @@ impl SchemeMut for SMScheme {
     }
 
     fn read(&mut self, _file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        //if self.cmd == 3 (for list)
-        //for each 8 bytes in buf (because)
-        Ok(0)
+        //if self.cmd == 3 {
+        //  for each 8 bytes in buf:
+        //      buf[8 bytes] = pid; (usize = 64 bits or 8 bytes)
+        //  Ok(buf.length())
+        //}
+        // in services/main.rs smth like
+        // Ok(buffer_size) = read(sm_fd, pid_buffer)
+        // for each 8 bytes in pid_buffer print as usize;
+        //Ok(0)
+
+        //info!("Read called with cmd: {}", self.cmd);
+        if self.cmd == 3 {
+            let size = std::cmp::min(buf.len(), self.pid_buffer.len());
+            buf[..size].copy_from_slice(&self.pid_buffer[..size]);
+            info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
+            self.cmd = 0; //unlike the other commands, needs to fix cmd here instead of in main
+            Ok(size)
+        } else {
+            Ok(0)
+        } 
     }
 
 
@@ -64,10 +82,11 @@ impl SchemeMut for SMScheme {
                 r = 2;
             }
 
-            //list => {
-            // self.cmd = 3;
-            //}
-            //maybe some other stuff?
+            b"list " => {
+                self.cmd = 3;
+                r = 3;
+            }
+
 
             _ => {
                 self.cmd = 0;

@@ -61,8 +61,9 @@ fn main() {
         // pid = write(fd, "pid")
         info!("started {} with pid: {:#?}", name, pid);
     }
-    
-    
+
+
+
     redox_daemon::Daemon::new(move |daemon| {
         let name = "service-monitor";
         let socket = Socket::<V2>::create(name).expect("service-monitor: failed to create Service Monitor scheme");
@@ -70,6 +71,7 @@ fn main() {
         let mut sm_scheme = SMScheme{
             cmd: 0,
             arg1: String::from(""),
+            pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
         };
         
         info!("service-monitor daemonized with pid: {}", std::process::id());
@@ -99,6 +101,9 @@ fn main() {
                 } else {
                     warn!("stop failed: no service named '{}'", sm_scheme.arg1);
                 }
+                //reset the current command value
+                sm_scheme.cmd = 0;
+                sm_scheme.arg1 = "".to_string();
             }
             // start: check if service is running, if not build command from registry and start
             if sm_scheme.cmd == 2  {
@@ -125,10 +130,29 @@ fn main() {
                 } else {
                     warn!("start failed: no service named '{}'", sm_scheme.arg1);
                 }
+                //reset the current command value
+                sm_scheme.cmd = 0;
+                sm_scheme.arg1 = "".to_string();
+            }
+
+            // list: get all pids from managed services and return them to CLI
+            if sm_scheme.cmd == 3  {
+                let mut pids: Vec<usize> = Vec::new();
+                for service in services.values() {
+                    pids.push(service.pid);
+                }
+                info!("Listing PIDs: {:?}", pids);
+                let mut bytes: Vec<u8> = Vec::new();
+                for pid in pids {
+                    let pid_u32 = pid as u32;
+                    bytes.extend_from_slice(&pid_u32.to_ne_bytes());
+                }
+                //info!("PIDs as bytes: {:?}", bytes);
+                sm_scheme.pid_buffer = bytes;
             } 
-            //reset the current command value
-            sm_scheme.cmd = 0;
-            sm_scheme.arg1 = "".to_string();
+
+
+            
 
             // The following is for handling requests to the SM scheme
             // Redox does timers with the timer scheme according to docs https://doc.redox-os.org/book/event-scheme.html
