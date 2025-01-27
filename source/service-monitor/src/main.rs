@@ -139,7 +139,9 @@ fn main() {
             if sm_scheme.cmd == 3  {
                 let mut pids: Vec<usize> = Vec::new();
                 for service in services.values() {
-                    pids.push(service.pid);
+                    if (service.running) {
+                        pids.push(service.pid);
+                    }
                 }
                 info!("Listing PIDs: {:?}", pids);
                 let mut bytes: Vec<u8> = Vec::new();
