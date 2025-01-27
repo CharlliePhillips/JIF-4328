@@ -21,6 +21,14 @@ fn main() {
                 cmd_buf.push(*b);
             }
         }
+
+        "list" => {
+            for b in format!(" ;").as_bytes() {
+                cmd_buf.push(*b);
+            }
+
+        }
+
         _ => {
             println!("invalid arguments arg1: {:?}", arg1);
             return;
@@ -33,7 +41,25 @@ fn main() {
     let success = File::write(sm_fd, &cmd_buf).expect("failed to write command to service monitor");
     
     match success {
+        //special case for list
+        3 => {
+            let mut pid_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later
+            let size = File::read(sm_fd, &mut pid_buffer).expect("failed to read PIDs from service monitor");
+            pid_buffer.truncate(size);
+
+            //since each PID is 4 bytes, we chunk and read that way
+            let pids: Vec<usize> = pid_buffer.chunks(4).map(|chunk| {
+                let mut array = [0u8; 4];
+                array.copy_from_slice(chunk);
+                u32::from_ne_bytes(array) as usize
+            }).collect();
+            println!("PIDs: {:?}", pids);
+        }
+
+
         _ => println!("write command returned value: {success:#?}")
     }
+
+    
 
 }
