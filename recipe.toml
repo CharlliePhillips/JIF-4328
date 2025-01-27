@@ -2,4 +2,12 @@
 template = "custom"
 script = """
 cookbook_cargo_packages service-monitor services gtrand
+
+
+#mkdir -pv "${COOKBOOK_STAGE}"/etc/services # create the /etc/services folder inside the package
+#cp -rv "${COOKBOOK_SOURCE}"/service-monitor/smregistry.toml "${COOKBOOK_STAGE}"/etc/services/ # copy the configuration file from the program source code to the package
+
+mkdir -pv "${COOKBOOK_STAGE}"/usr/share # create the /usr/share folder inside the package
+cp -rv "${COOKBOOK_SOURCE}"/service-monitor/smregistry.toml "${COOKBOOK_STAGE}"/usr/share # copy the configuration file from the program source code to the package
+
 """

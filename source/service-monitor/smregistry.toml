@@ -1,0 +1,7 @@
+[[service]]
+name = "service-monitor_gtrand"
+type = "daemon"
+args = [ "0" ]
+manual_override = true
+depends = []
+scheme_path = "/scheme/gtrand"
