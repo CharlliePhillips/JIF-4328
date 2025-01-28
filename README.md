@@ -1,5 +1,5 @@
 # Service Monitor
-description
+A system health monitoring service for Redox OS
 
 ## Release Notes
 ### Version 0.1.0
@@ -10,7 +10,8 @@ description
 * The command 'list' can be used to list the PIDs of registered running services
 
 #### Known Issues
-* smregistry.toml should be moved to /etc/services in the redox directory
+* `smregistry.toml` should be moved to `/etc/services` in the redox directory
+* Reading information from a service/scheme should be removed from any specific service (such as gtrand) to prepare for moving to `getattr/setattr` in the future
 
 
 # Installation and Testing
