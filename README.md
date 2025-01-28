@@ -14,7 +14,6 @@ A system health monitoring service for Redox OS
 * Reading information from a service/scheme should be removed from any specific service (such as gtrand) to prepare for moving to `getattr/setattr` in the future
 
 
-# Installation and Testing
 ## Installation
 1. `git clone` into recipes folder
 2. add the line `service-monitor = {}` to `[packages]` in `config/desktop.toml`
