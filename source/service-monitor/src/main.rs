@@ -11,13 +11,6 @@ mod scheme;
 mod registry;
 use registry::{read_registry, ServiceEntry};
 
-//struct ServiceEntry {
-//    name: String,
-//    running: bool,
-//    pid: usize,
-//    scheme_path: String
-//}
-
 fn main() {
     let _ = RedoxLogger::new()
     .with_output(
@@ -40,18 +33,29 @@ fn main() {
         child_service.wait();
         service.running = true;
         
-        // daemonization process makes this id not the actual one we need
-        // but it is two most of the time?
+        // SCRUM-37 TODO: this block should be turned into a new function that preforms this in a single here but can also
+        // handle variable requests, maybe definining an enum with all the request types instead of a string would be helpful?
+
+        // open the scheme to get 'child_scheme' fd
         let Ok(child_scheme) = &mut OpenOptions::new().write(true)
         .open(service.scheme_path.clone()) else {panic!()};
+        // set the request that we want and write it to the scheme
         let pid_req = b"pid";
-        let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
-        //pid += 2;
+        File::write(child_scheme, pid_req).expect("could not request pid");
+        // set up the read buffer and read from the scheme into it
+        let mut read_buffer: &mut [u8] = &mut [b'0'; 32];
+        File::read(child_scheme, read_buffer).expect("could not read pid");
+        // process the buffer based on the request (pid)
+        let mut pid_bytes: [u8; 8] = [0; 8];
+        for mut i in 0..7 {
+            info!("byte {} reads {}", i, read_buffer[i]);
+            pid_bytes[i] = read_buffer[i];
+            i += 1;
+        }
+        // this last line would instead be something like let pid = getSvcAttr(service, "pid")
+        let pid = usize::from_ne_bytes(pid_bytes);
+
         service.pid = pid;
-        // TODO once pid can be read from scheme
-        // fd = open(/scheme/<name>)
-        // buf = "pid"
-        // pid = write(fd, "pid")
         info!("started {} with pid: {:#?}", name, pid);
     }
 
@@ -80,6 +84,9 @@ fn main() {
              once the services vector is updated use the information to start the list
             */
             
+            // SCRUM-34 - move these if statments into a new function with a big match statment
+            // may be worth having the service monitor commands as an enum like the service requests
+
             // check if the service-monitor's command value has been changed.
             // stop: check if service is running, if it is then get pid and stop
             if sm_scheme.cmd == 1 {

@@ -20,12 +20,12 @@ use syscall::{
     Error, Result, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC, O_CREAT,
     O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY,
 };
-
 // Create an RNG Seed to create initial seed from the rdrand intel instruction
 use rand_core::SeedableRng;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::num::Wrapping;
+use gtrand::ManagedScheme;
 
 // This Daemon implements a Cryptographically Secure Random Number Generator
 // that does not block on read - i.e. it is equivalent to linux /dev/urandom
@@ -111,7 +111,7 @@ struct RandScheme {
     // Trying to create a HashMap causes a system crash.
     // <file number, information about the open file>
     next_fd: Wrapping<usize>,
-    pid: usize,
+    managment: ManagedScheme,
 }
 
 impl RandScheme {
@@ -128,7 +128,7 @@ impl RandScheme {
             },
             open_descriptors: BTreeMap::new(),
             next_fd: Wrapping(0),
-            pid: 0,
+            managment: ManagedScheme::new(),
         }
     }
 
@@ -272,12 +272,17 @@ impl SchemeMut for RandScheme {
     fn read(&mut self, file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // Check fd and permissions
         self.can_perform_op_on_fd(file, MODE_READ)?;
-
-        // Setting the stream will ensure that if two clients are reading concurrently, they won't get the same numbers
-        self.prng.set_stream(file as u64); // Should probably find a way to re-instate the counter for this stream, but
-                                           // not doing so won't make the output any less 'random'
-        self.prng.fill_bytes(buf);
-
+        
+        // check the managment struct to see if a response is pending
+        if self.managment.response_pending {
+            // if we have a response waiting then the buffer should have that data
+            self.managment.fill_buffer(buf);
+        } else {
+            // Setting the stream will ensure that if two clients are reading concurrently, they won't get the same numbers
+            self.prng.set_stream(file as u64); // Should probably find a way to re-instate the counter for this stream, but
+                                               // not doing so won't make the output any less 'random'
+            self.prng.fill_bytes(buf)
+        }
         Ok(buf.len())
     }
 
@@ -291,16 +296,19 @@ impl SchemeMut for RandScheme {
         // that as the resulting numbers would be predictable based on this input
         // we'll take 512 bits (arbitrary) from the current PRNG, and seed with that
         // and the supplied data.
-        if buf == b"pid" {
-            return Ok(self.pid);
+        
+        // this handler returns true if a valid request was passed on the buffer
+        // in this case we don't want to run the service's code on the request
+        if  !self.managment.handle_sm_request(buf) {
+            let mut rng_buf: [u8; SEED_BYTES] = [0; SEED_BYTES];
+            self.prng.fill_bytes(&mut rng_buf);
+            let mut rng_vec = Vec::new();
+            rng_vec.extend(&rng_buf);
+            rng_vec.extend(buf);
+            self.reseed_prng(&rng_vec);
         }
-        let mut rng_buf: [u8; SEED_BYTES] = [0; SEED_BYTES];
-        self.prng.fill_bytes(&mut rng_buf);
-        let mut rng_vec = Vec::new();
-        rng_vec.extend(&rng_buf);
-        rng_vec.extend(buf);
-        self.reseed_prng(&rng_vec);
         Ok(buf.len())
+
     }
 
     fn fchmod(&mut self, file: usize, mode: u16) -> Result<usize> {
@@ -368,7 +376,6 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
     let socket = Socket::<V2>::create("gtrand").expect("randd: failed to create rand scheme");
 
     let mut scheme = RandScheme::new(socket);
-    scheme.pid = std::process::id().try_into().unwrap();
     daemon
         .ready()
         .expect("randd: failed to mark daemon as ready");
