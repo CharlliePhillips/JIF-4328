@@ -279,7 +279,7 @@ fn eval_cmd(services: &mut BTreeMap<String, ServiceEntry>, sm_scheme: &mut SMSch
                     warn!("stop failed: {} was already stopped", service.name);
                 }
             } else {
-                *warn!("stop failed: no service named '{}'", sm_scheme.arg1);
+                warn!("stop failed: no service named '{}'", sm_scheme.arg1);
             }
             //reset the current command value
             sm_scheme.cmd = 0;
@@ -307,7 +307,7 @@ fn eval_cmd(services: &mut BTreeMap<String, ServiceEntry>, sm_scheme: &mut SMSch
                     }
                 };
             } else {
-                *warn!("start failed: no service named '{}'", sm_scheme.arg1);
+                warn!("start failed: no service named '{}'", sm_scheme.arg1);
             }
             //reset the current command value
             sm_scheme.cmd = 0;
@@ -329,6 +329,7 @@ fn eval_cmd(services: &mut BTreeMap<String, ServiceEntry>, sm_scheme: &mut SMSch
             //info!("PIDs as bytes: {:?}", bytes);
             sm_scheme.pid_buffer = bytes;
         },
+        _ => {}
     }
 }
 >>>>>>> b34e1d3 (refactor: moved service monitor command handling to separate function with match statement)
