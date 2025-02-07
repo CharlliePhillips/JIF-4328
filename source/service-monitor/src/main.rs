@@ -80,71 +80,7 @@ fn main() {
              once the services vector is updated use the information to start the list
             */
             
-            // check if the service-monitor's command value has been changed.
-            // stop: check if service is running, if it is then get pid and stop
-            if sm_scheme.cmd == 1 {
-                if let Some(service) = services.get_mut(&sm_scheme.arg1) {
-                    if service.running {
-                        info!("trying to kill pid {}", service.pid);
-                        let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
-                        service.running = false;
-                    } else {
-                        warn!("stop failed: {} was already stopped", service.name);
-                    }
-                } else {
-                    warn!("stop failed: no service named '{}'", sm_scheme.arg1);
-                }
-                //reset the current command value
-                sm_scheme.cmd = 0;
-                sm_scheme.arg1 = "".to_string();
-            }
-            // start: check if service is running, if not build command from registry and start
-            if sm_scheme.cmd == 2  {
-                if let Some(service) = services.get_mut(&sm_scheme.arg1) {
-                    // can add args here later with '.arg()'
-                    match std::process::Command::new(service.name.as_str()).spawn() {
-                        Ok(mut child) => {
-                            //service.pid = child.id().try_into().unwrap();
-                            //service.pid += 2;
-                            child.wait();
-                            let Ok(child_scheme) = &mut OpenOptions::new().write(true)
-                            .open(service.scheme_path.clone()) else {panic!()};
-                            let pid_req = b"pid";
-                            let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
-                            service.pid = pid;
-                            info!("child started with pid: {:#?}", service.pid);
-                            service.running = true;
-                        },
-
-                        Err(e) => {
-                            warn!("start failed: could not start {}", service.name);
-                        }
-                    };
-                } else {
-                    warn!("start failed: no service named '{}'", sm_scheme.arg1);
-                }
-                //reset the current command value
-                sm_scheme.cmd = 0;
-                sm_scheme.arg1 = "".to_string();
-            }
-
-            // list: get all pids from managed services and return them to CLI
-            if sm_scheme.cmd == 3  {
-                let mut pids: Vec<usize> = Vec::new();
-                for service in services.values() {
-                    if (service.running) {
-                        pids.push(service.pid);
-                    }
-                }
-                info!("Listing PIDs: {:?}", pids);
-                let mut bytes: Vec<u8> = Vec::new();
-                for pid in pids {
-                    let pid_u32 = pid as u32;
-                    bytes.extend_from_slice(&pid_u32.to_ne_bytes());
-                }
-                //info!("PIDs as bytes: {:?}", bytes);
-                sm_scheme.pid_buffer = bytes;
-            } 
+            eval_cmd(&mut services, &mut sm_scheme); 
 
 
             
@@ -177,4 +113,79 @@ fn main() {
         }
     })
     .expect("service-monitor: failed to daemonize");
+}
+
+/// Checks if the service-monitor's command value has been changed and performs the appropriate action.
+/// Currently supports the following commands:
+/// - stop: check if service is running, if it is then get pid and stop
+/// - start: check if service is running, if not build command from registry and start
+/// - list: get all pids from managed services and return them to CLI
+fn eval_cmd(services: &mut BTreeMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
+    const CMD_STOP: u32 = 1;
+    const CMD_START: u32 = 2;
+    const CMD_LIST: u32 = 3;
+
+    match sm_scheme.cmd {
+        CMD_STOP => {
+            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+                if service.running {
+                    info!("trying to kill pid {}", service.pid);
+                    let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
+                    service.running = false;
+                } else {
+                    warn!("stop failed: {} was already stopped", service.name);
+                }
+            } else {
+                warn!("stop failed: no service named '{}'", sm_scheme.arg1);
+            }
+            //reset the current command value
+            sm_scheme.cmd = 0;
+            sm_scheme.arg1 = "".to_string();
+        },
+        CMD_START => {
+            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+                // can add args here later with '.arg()'
+                match std::process::Command::new(service.name.as_str()).spawn() {
+                    Ok(mut child) => {
+                        //service.pid = child.id().try_into().unwrap();
+                        //service.pid += 2;
+                        child.wait();
+                        let Ok(child_scheme) = &mut OpenOptions::new().write(true)
+                        .open(service.scheme_path.clone()) else {panic!()};
+                        let pid_req = b"pid";
+                        let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
+                        service.pid = pid;
+                        info!("child started with pid: {:#?}", service.pid);
+                        service.running = true;
+                    },
+    
+                    Err(e) => {
+                        warn!("start failed: could not start {}", service.name);
+                    }
+                };
+            } else {
+                warn!("start failed: no service named '{}'", sm_scheme.arg1);
+            }
+            //reset the current command value
+            sm_scheme.cmd = 0;
+            sm_scheme.arg1 = "".to_string();
+        },
+        CMD_LIST => {
+            let mut pids: Vec<usize> = Vec::new();
+            for service in services.values() {
+                if (service.running) {
+                    pids.push(service.pid);
+                }
+            }
+            info!("Listing PIDs: {:?}", pids);
+            let mut bytes: Vec<u8> = Vec::new();
+            for pid in pids {
+                let pid_u32 = pid as u32;
+                bytes.extend_from_slice(&pid_u32.to_ne_bytes());
+            }
+            //info!("PIDs as bytes: {:?}", bytes);
+            sm_scheme.pid_buffer = bytes;
+        },
+        _ => {}
+    }
 }
