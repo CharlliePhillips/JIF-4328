@@ -84,96 +84,8 @@ fn main() {
              once the services vector is updated use the information to start the list
             */
             
-<<<<<<< HEAD
-            // SCRUM-34 - move these if statments into a new function with a big match statment
-            // may be worth having the service monitor commands as an enum like the service requests
 
-            // check if the service-monitor's command value has been changed.
-            // stop: check if service is running, if it is then get pid and stop
-            if sm_scheme.cmd == 1 {
-                if let Some(service) = services.get_mut(&sm_scheme.arg1) {
-                    if service.running {
-                        info!("trying to kill pid {}", service.pid);
-                        let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
-                        service.running = false;
-                    } else {
-                        warn!("stop failed: {} was already stopped", service.name);
-                    }
-                } else {
-                    warn!("stop failed: no service named '{}'", sm_scheme.arg1);
-                }
-                //reset the current command value
-                sm_scheme.cmd = 0;
-                sm_scheme.arg1 = "".to_string();
-            }
-            // start: check if service is running, if not build command from registry and start
-            if sm_scheme.cmd == 2  {
-                if let Some(service) = services.get_mut(&sm_scheme.arg1) {
-                    // can add args here later with '.arg()'
-                    if !service.running {
-                        match std::process::Command::new(service.name.as_str()).spawn() {
-                            Ok(mut child) => {
-                                //service.pid = child.id().try_into().unwrap();
-                                //service.pid += 2;
-                                child.wait();
-                                let Ok(child_scheme) = &mut OpenOptions::new().write(true)
-                                .open(service.scheme_path.clone()) else {panic!()};
-                                let pid_req = b"pid";
-                                let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
-                                // set up the read buffer and read from the scheme into it
-                                let mut read_buffer: &mut [u8] = &mut [b'0'; 32];
-                                File::read(child_scheme, read_buffer).expect("could not read pid");
-                                // process the buffer based on the request (pid)
-                                let mut pid_bytes: [u8; 8] = [0; 8];
-                                for mut i in 0..7 {
-                                    pid_bytes[i] = read_buffer[i];
-                                    i += 1;
-                                }
-                                // this last line would instead be something like let pid = getSvcAttr(service, "pid")
-                                let pid = usize::from_ne_bytes(pid_bytes);
-                                service.pid = pid;
-                                info!("child started with pid: {:#?}", service.pid);
-                                service.running = true;
-                            },
-
-                            Err(e) => {
-                                warn!("start failed: could not start {}", service.name);
-                            }
-                        };
-                    } else {
-                        warn!("service: '{}' already running!", service.name);
-                        test_service_data(service);
-                    }
-                } else {
-                    warn!("start failed: no service named '{}'", sm_scheme.arg1);
-                }
-                //reset the current command value
-                sm_scheme.cmd = 0;
-                sm_scheme.arg1 = "".to_string();
-            }
-
-            // list: get all pids from managed services and return them to CLI
-            if sm_scheme.cmd == 3  {
-                let mut pids: Vec<usize> = Vec::new();
-                for service in services.values() {
-                    if (service.running) {
-                        pids.push(service.pid);
-                    }
-                }
-                info!("Listing PIDs: {:?}", pids);
-                let mut bytes: Vec<u8> = Vec::new();
-                for pid in pids {
-                    let pid_u32 = pid as u32;
-                    bytes.extend_from_slice(&pid_u32.to_ne_bytes());
-                }
-                //info!("PIDs as bytes: {:?}", bytes);
-                sm_scheme.pid_buffer = bytes;
-            } 
-=======
             eval_cmd(&mut services, &mut sm_scheme); 
->>>>>>> b34e1d3 (refactor: moved service monitor command handling to separate function with match statement)
-
-
             
 
             // The following is for handling requests to the SM scheme
@@ -206,7 +118,6 @@ fn main() {
     .expect("service-monitor: failed to daemonize");
 }
 
-<<<<<<< HEAD
 fn test_service_data(service: &mut ServiceEntry) {
         warn!("testing service data!");
         let Ok(child_scheme) = &mut OpenOptions::new().write(true)
@@ -257,7 +168,6 @@ fn test_service_data(service: &mut ServiceEntry) {
         data_string.retain(|c| c != '\0');
         info!("data string: {:#?}", data_string)
 }
-=======
 /// Checks if the service-monitor's command value has been changed and performs the appropriate action.
 /// Currently supports the following commands:
 /// - stop: check if service is running, if it is then get pid and stop
@@ -288,24 +198,29 @@ fn eval_cmd(services: &mut BTreeMap<String, ServiceEntry>, sm_scheme: &mut SMSch
         CMD_START => {
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                 // can add args here later with '.arg()'
-                match std::process::Command::new(service.name.as_str()).spawn() {
-                    Ok(mut child) => {
-                        //service.pid = child.id().try_into().unwrap();
-                        //service.pid += 2;
-                        child.wait();
-                        let Ok(child_scheme) = &mut OpenOptions::new().write(true)
-                        .open(service.scheme_path.clone()) else {panic!()};
-                        let pid_req = b"pid";
-                        let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
-                        service.pid = pid;
-                        info!("child started with pid: {:#?}", service.pid);
-                        service.running = true;
-                    },
+                if (!service.running) {
+                    match std::process::Command::new(service.name.as_str()).spawn() {
+                        Ok(mut child) => {
+                            //service.pid = child.id().try_into().unwrap();
+                            //service.pid += 2;
+                            child.wait();
+                            let Ok(child_scheme) = &mut OpenOptions::new().write(true)
+                            .open(service.scheme_path.clone()) else {panic!()};
+                            let pid_req = b"pid";
+                            let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
+                            service.pid = pid;
+                            info!("child started with pid: {:#?}", service.pid);
+                            service.running = true;
+                        },
     
-                    Err(e) => {
-                        warn!("start failed: could not start {}", service.name);
-                    }
-                };
+                        Err(e) => {
+                            warn!("start failed: could not start {}", service.name);
+                        }
+                    };
+                } else {
+                    warn!("service: '{}' is already running", service.name);
+                    test_service_data(service);
+                }
             } else {
                 warn!("start failed: no service named '{}'", sm_scheme.arg1);
             }
@@ -332,4 +247,3 @@ fn eval_cmd(services: &mut BTreeMap<String, ServiceEntry>, sm_scheme: &mut SMSch
         _ => {}
     }
 }
->>>>>>> b34e1d3 (refactor: moved service monitor command handling to separate function with match statement)
