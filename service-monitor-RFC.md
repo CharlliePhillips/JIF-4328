@@ -200,7 +200,8 @@ Depends = []
 
 # Unresolved questions
 - With the current implementation if the service monitor writes a request and to a service and then another program attempts to read from that service then it will recieve the response intended for the service manager. How can we tell from inside the `read` function what process called it? Will we have to store something in the `Managment` struct to help identify the service_monitor process?
-- Any remaining common protocols and device specific protocols  
+- Any remaining common protocols and device specific protocols 
+- Should the timestamp use seconds milliseconds?
 - Should the Device Discovery remove formerly discovered services or manually added services that aren’t found for stability? 
 - Daemon dependencies will come from `Cargo.toml/.lock`? `Registry.toml`? 
 - What happens when a discovered service exists in the registry but the parameters discovered are different then those in the registry, update? Will we need an additional flag in the registry for manual override of this update? 
