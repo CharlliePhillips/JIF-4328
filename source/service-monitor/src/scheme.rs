@@ -9,18 +9,16 @@ use syscall::{error::*, MODE_CHR};
 // Ty is to leave room for other types of monitor schemes
 // maybe an int or enum for the command, string buffer for service name?
 
-// todo: replace cmd u32 in SMScheme with enum we can reuse and better define
-// pub enum Cmd {
-//     Start(String),
-//     Stop(String),
-//     List
-// }
+pub enum Cmd {
+    Start(String),
+    Stop(String),
+    List
+}
 
 
 pub struct SMScheme {
-    pub cmd: u32, 
-    pub arg1: String,
-    pub pid_buffer: Vec<u8>, 
+    pub cmd: Option<Cmd>,
+    pub pid_buffer: Vec<u8>, //used in list, could be better as the BTreeMap from service-monitor later?
 }
 
 impl Scheme for SMScheme {
@@ -49,11 +47,11 @@ impl Scheme for SMScheme {
         //Ok(0)
 
         //info!("Read called with cmd: {}", self.cmd);
-        if self.cmd == 3 {
+        if matches!(self.cmd, Some(Cmd::List)) {
             let size = std::cmp::min(buf.len(), self.pid_buffer.len());
             buf[..size].copy_from_slice(&self.pid_buffer[..size]);
             info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
-            self.cmd = 0; //unlike the other commands, needs to fix cmd here instead of in main
+            self.cmd = None; //unlike the other commands, needs to fix cmd here instead of in main
             Ok(size)
         } else {
             Ok(0)
@@ -62,6 +60,7 @@ impl Scheme for SMScheme {
 
 
 
+    // currently returns the old hardcoded integer value of the command. do we want to change this?
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         //if buf contains "stop" set command = 1
         let mut r = 0;
@@ -69,34 +68,36 @@ impl Scheme for SMScheme {
 
         match &buffer[0..5] {
             b"stop " => {
-                self.cmd = 1;
+                let mut arg1: String;
                 let mut idx: usize = 5;
                 while(buffer[idx] != b';') {
-                    self.arg1.push(buffer[idx] as char);
+                    arg1.push(buffer[idx] as char);
                     idx += 1;
                 }
+                self.cmd = Some(Cmd::Stop(arg1));
                 
                 r = 1;
             }
 
             b"start" => {
-                self.cmd = 2;
+                let mut arg1: String;
                 let mut idx: usize = 6;
                 while(buffer[idx] != b';') {
-                    self.arg1.push(buffer[idx] as char);
+                    arg1.push(buffer[idx] as char);
                     idx += 1;
                 }
+                self.cmd = Some(Cmd::Start(arg1));
                 r = 2;
             }
 
             b"list " => {
-                self.cmd = 3;
+                self.cmd = Some(Cmd::List);
                 r = 3;
             }
 
 
             _ => {
-                self.cmd = 0;
+                self.cmd = None;
                 r = 0;
             }
         }

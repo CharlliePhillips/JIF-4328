@@ -4,7 +4,7 @@ use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
 use std::{str, borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
 use hashbrown::HashMap;
-use scheme::SMScheme;
+use scheme::{Cmd, SMScheme};
 use timer;
 use chrono::prelude::*;
 use std::sync::mpsc::channel;
@@ -68,8 +68,7 @@ fn main() {
         let socket = Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
         let mut sm_scheme = SMScheme{
-            cmd: 0,
-            arg1: String::from(""),
+            cmd: None,
             pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
         };
         
@@ -122,13 +121,9 @@ fn main() {
 /// - start: check if service is running, if not build command from registry and start
 /// - list: get all pids from managed services and return them to CLI
 fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
-    const CMD_STOP: u32 = 1;
-    const CMD_START: u32 = 2;
-    const CMD_LIST: u32 = 3;
-
-    match sm_scheme.cmd {
-        CMD_STOP => {
-            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+    match &sm_scheme.cmd {
+        Some(Cmd::Stop(arg1)) => {
+            if let Some(service) = services.get_mut(arg1) {
                 if service.running {
                     info!("trying to kill pid {}", service.pid);
                     let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
@@ -137,14 +132,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     warn!("stop failed: {} was already stopped", service.name);
                 }
             } else {
-                warn!("stop failed: no service named '{}'", sm_scheme.arg1);
+                warn!("stop failed: no service named '{}'", arg1);
             }
             //reset the current command value
-            sm_scheme.cmd = 0;
-            sm_scheme.arg1 = "".to_string();
+            sm_scheme.cmd = None;
         },
-        CMD_START => {
-            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+        Some(Cmd::Start(arg1)) => {
+            if let Some(service) = services.get_mut(arg1) {
                 // can add args here later with '.arg()'
                 if (!service.running) {
                     match std::process::Command::new(service.name.as_str()).spawn() {
@@ -181,13 +175,12 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     test_service_data(service);
                 }
             } else {
-                warn!("start failed: no service named '{}'", sm_scheme.arg1);
+                warn!("start failed: no service named '{}'", arg1);
             }
             //reset the current command value
-            sm_scheme.cmd = 0;
-            sm_scheme.arg1 = "".to_string();
+            sm_scheme.cmd = None;
         },
-        CMD_LIST => {
+        Some(Cmd::List) => {
             let mut pids: Vec<usize> = Vec::new();
             for service in services.values() {
                 if (service.running) {
@@ -203,6 +196,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             //info!("PIDs as bytes: {:?}", bytes);
             sm_scheme.pid_buffer = bytes;
         },
+        None => {},
         _ => {}
     }
 }
