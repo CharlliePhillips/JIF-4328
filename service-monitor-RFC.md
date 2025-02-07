@@ -116,7 +116,11 @@ Clear short-term stats for <daemon_name>.
 - Use rust standard library to build a command that starts the daemon. Once it is started, the Service Manager does not need to do anything. 
 ### Service Start (new-style daemons) 
 - Same as legacy, but the file descriptor for the new daemon is recorded by the SM to reference later.  
-### Status, Failure Detection & Recovery 
+### Service Status, Failure Detection & Recovery
+- Each service/daemon in redox has a scheme associated with it where data is stored. If a service fully supports the service monitor then it's scheme will store a struct of type `Managment`. The Managment struct is implemented to store and track the service's data needed by the service monitor. On top of this data and methods to access it.
+
+- While getattr and setattr are still in development the service monitor will first use the `write` syscall to send a string query to a service through it's scheme. When the service recieves this request it calls a `handle_sm_request` method moving the requested data into a 32 byte array `response_buffer` and `response_pending` is set to true. The service monitor can then use the `read` syscall to get the response. When the service processes the read it will see a response pending and the `response_buffer` will be copied to the buffer passed to `read`.
+
 - File descriptor and registry.toml info for each monitored service is used with the protocols below to collect data on each service. This will then be used to restart or restore processes when they are not working correctly 
 
 - Protocalls here are a 32-byte string passed to getattr()/setattr() with a file descriptor of the service to request statistics from. The file descriptor is obtained by opening the service’s scheme path as a file. A managed service’s scheme will get one of these strings in it’s get/setattr and match it to a function that is part of the managed scheme trait to read and/or write the relevant data to/from the scheme. While getattr and setattr are being implemented read and write will be used instead. 
@@ -130,7 +134,7 @@ Clear short-term stats for <daemon_name>.
     - `clear` set to 1 to clear the short-term statistics 
 
 - Threaded wrappers for get/setattr() will also be needed in the case that a thread executing either syscall is hung on that command. These are interruptible and will return EINTR when their running thread is signaled with SIGALRM. Another thread will monitor the wrapper(s) for response times that are too long and signal them with SIGALRM (using pthread_kill) if they exceed some timeout period. 
-- Each service/daemon in redox has a scheme associated with it where this data will be stored. They will be added as traits to ‘redox-scheme’. 
+
 - There is some data that will be stored in the Service Monitor for each service running: 
     - Total number of requests (this ignores clearing) 
     - Total # of errors logged (this ignores clearing) 
@@ -187,13 +191,15 @@ Depends = []
 # Drawbacks
 - Registry could become giant unorganized text file 
 - How to handle multiple instances of the same service? 
-- Domain specific service monitors will likely require additional custom code or API calls to be created. 
+- Domain specific service monitors will likely require additional custom code or API calls to be created.
+- With the current implementation if the service monitor writes a request and to a service and then another program attempts to read from that service then it will recieve the response intended for the service manager.
 
 # Alternatives
 - Keeping old init script vs. using the service monitor as init. The service registry should be able to start registered applications without having them stay monitored for those that do not support it. This Service Monitor is intended to replace init and incrementally add services to be monitored. 
 - Making the registry split up among multiple files, maybe one per service 
 
 # Unresolved questions
+- With the current implementation if the service monitor writes a request and to a service and then another program attempts to read from that service then it will recieve the response intended for the service manager. How can we tell from inside the `read` function what process called it? Will we have to store something in the `Managment` struct to help identify the service_monitor process?
 - Any remaining common protocols and device specific protocols  
 - Should the Device Discovery remove formerly discovered services or manually added services that aren’t found for stability? 
 - Daemon dependencies will come from `Cargo.toml/.lock`? `Registry.toml`? 
