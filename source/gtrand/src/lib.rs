@@ -1,17 +1,39 @@
-pub struct ManagedScheme {
+use chrono::prelude::*;
+
+pub struct Managment {
     // these bytes will hold data to be read through the scheme this is attached to
-    bytes: [u8; 32],
+    response_buf: [u8; 32],
     // set to true when a request has been written and the scheme is waiting for the response to be read
     pub response_pending: bool,
     pid: usize,
+    time_stamp: i64,
+    message: [u8; 32],
+    // [0] = read, [1] = write
+    request_count: (u64, u64),
+
 }
-impl ManagedScheme {
+impl Managment {
     //constructor
-    pub fn new() -> ManagedScheme {
-        ManagedScheme {
-            bytes: [0;32],
+    pub fn new() -> Managment {
+        Managment {
+            response_buf: [0;32],
             response_pending: false,
             pid: std::process::id().try_into().unwrap(),
+            // init timestamp to unix epoch
+            time_stamp: 0,
+            message: [0;32],
+            request_count: (13, 42),
+        }
+    }
+
+    pub fn start_managment(&mut self, message: &str) {
+        self.time_stamp = Local::now().timestamp();
+        let mut message_len = message.as_bytes().len();
+        if message_len > 32 {
+            message_len = 32
+        }
+        for i in 0..message_len {
+            self.message[i] = message.as_bytes()[i];
         }
     }
 
@@ -21,7 +43,18 @@ impl ManagedScheme {
         match buf {
             b"pid" => {
                 self.pid();
+            }
+            b"time_stamp" => {
+                self.time_stamp();
             } 
+
+            b"message" => {
+                self.message();
+            }
+
+            b"request_count" => {
+                self.request_count();
+            }
             _ => {
                 self.response_pending = false;
             }
@@ -32,7 +65,7 @@ impl ManagedScheme {
     // copy the managment bytes to a buffer
     pub fn fill_buffer(&mut self, buf: &mut [u8]) {
         let mut i = 0;
-        for b in self.bytes {
+        for b in self.response_buf {
             buf[i] = b;
             i += 1;
         }
@@ -44,7 +77,42 @@ impl ManagedScheme {
         let mut i = 0;
         println!("pid bytes: {:#?}", self.pid.to_ne_bytes());
         for b in self.pid.to_ne_bytes() {
-            self.bytes[i] = b;
+            self.response_buf[i] = b;
+            i += 1;
+        }
+    }
+
+    fn time_stamp(&mut self) {
+        let mut i = 0;
+        println!("time stamp bytes: {:#?}", self.time_stamp.to_ne_bytes());
+        for b in self.time_stamp.to_ne_bytes() {
+            self.response_buf[i] = b;
+            i += 1;
+        }   
+    }
+
+    fn message(&mut self) {
+        let mut i = 0;
+        println!("message bytes: {:#?}", self.message);
+        for b in self.message {
+            self.response_buf[i] = b;
+            i += 1;
+        }
+    }
+
+    fn request_count(&mut self) {
+        let mut i = 0;
+        println!("read count bytes: {:#?}", self.request_count.0.to_ne_bytes());
+        for b in self.request_count.0.to_ne_bytes() {
+            self.response_buf[i] = b;
+            i += 1;
+        }
+        // add a comma for the tuple
+        self.response_buf[i] = b',';
+        i += 1;
+        println!("write count bytes: {:#?}", self.request_count.1.to_ne_bytes());
+        for b in self.request_count.1.to_ne_bytes() {
+            self.response_buf[i] = b;
             i += 1;
         }
     }

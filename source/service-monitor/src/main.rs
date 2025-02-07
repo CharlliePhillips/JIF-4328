@@ -2,10 +2,10 @@ use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SchemeBlockMut, SchemeMut, SignalBehavior, Socket, V2};
-use std::{borrow::BorrowMut, collections::BTreeMap, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
+use std::{str, borrow::BorrowMut, collections::BTreeMap, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
 use scheme::{SMScheme};
 use timer;
-use chrono;
+use chrono::{prelude::*};
 use std::sync::mpsc::channel;
 mod scheme;
 mod registry;
@@ -33,7 +33,7 @@ fn main() {
         child_service.wait();
         service.running = true;
         
-        // SCRUM-37 TODO: this block should be turned into a new function that preforms this in a single here but can also
+        // SCRUM-39 TODO: this block should be turned into a new function that preforms this in a single here but can also
         // handle variable requests, maybe definining an enum with all the request types instead of a string would be helpful?
 
         // open the scheme to get 'child_scheme' fd
@@ -109,24 +109,40 @@ fn main() {
             if sm_scheme.cmd == 2  {
                 if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                     // can add args here later with '.arg()'
-                    match std::process::Command::new(service.name.as_str()).spawn() {
-                        Ok(mut child) => {
-                            //service.pid = child.id().try_into().unwrap();
-                            //service.pid += 2;
-                            child.wait();
-                            let Ok(child_scheme) = &mut OpenOptions::new().write(true)
-                            .open(service.scheme_path.clone()) else {panic!()};
-                            let pid_req = b"pid";
-                            let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
-                            service.pid = pid;
-                            info!("child started with pid: {:#?}", service.pid);
-                            service.running = true;
-                        },
+                    if !service.running {
+                        match std::process::Command::new(service.name.as_str()).spawn() {
+                            Ok(mut child) => {
+                                //service.pid = child.id().try_into().unwrap();
+                                //service.pid += 2;
+                                child.wait();
+                                let Ok(child_scheme) = &mut OpenOptions::new().write(true)
+                                .open(service.scheme_path.clone()) else {panic!()};
+                                let pid_req = b"pid";
+                                let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
+                                // set up the read buffer and read from the scheme into it
+                                let mut read_buffer: &mut [u8] = &mut [b'0'; 32];
+                                File::read(child_scheme, read_buffer).expect("could not read pid");
+                                // process the buffer based on the request (pid)
+                                let mut pid_bytes: [u8; 8] = [0; 8];
+                                for mut i in 0..7 {
+                                    pid_bytes[i] = read_buffer[i];
+                                    i += 1;
+                                }
+                                // this last line would instead be something like let pid = getSvcAttr(service, "pid")
+                                let pid = usize::from_ne_bytes(pid_bytes);
+                                service.pid = pid;
+                                info!("child started with pid: {:#?}", service.pid);
+                                service.running = true;
+                            },
 
-                        Err(e) => {
-                            warn!("start failed: could not start {}", service.name);
-                        }
-                    };
+                            Err(e) => {
+                                warn!("start failed: could not start {}", service.name);
+                            }
+                        };
+                    } else {
+                        warn!("service: '{}' already running!", service.name);
+                        test_service_data(service);
+                    }
                 } else {
                     warn!("start failed: no service named '{}'", sm_scheme.arg1);
                 }
@@ -184,4 +200,55 @@ fn main() {
         }
     })
     .expect("service-monitor: failed to daemonize");
+}
+
+fn test_service_data(service: &mut ServiceEntry) {
+        warn!("testing service data!");
+        let Ok(child_scheme) = &mut OpenOptions::new().write(true)
+        .open(service.scheme_path.clone()) else {panic!()};
+        // set the request that we want and write it to the scheme
+        let test_req= b"request_count";
+
+        File::write(child_scheme, test_req).expect("could not complete test request");
+        // set up the read buffer and read from the scheme into it
+        let read_buffer: &mut [u8] = &mut [b'0'; 32];
+        File::read(child_scheme, read_buffer).expect("could not read test response");
+        // process the buffer based on the request
+        let mut test_bytes: [u8; 32] = [0; 32];
+        for mut i in 0..32 {
+            //info!("byte {} reads {}", i, read_buffer[i]);
+            test_bytes[i] = read_buffer[i];
+            i += 1;
+        }
+
+        info!("data bytes: {:#?}", test_bytes);
+        let mut time_bytes = [0; 8];
+        for mut i in 0..8 {
+            time_bytes[i] = test_bytes[i];
+        }
+        
+        // get and print the timestamp
+        let time_int = i64::from_ne_bytes(time_bytes);
+        let time = DateTime::from_timestamp(time_int, 0).unwrap();
+        let time_string = format!("{}", time.format("%m/%d/%y %H:%M"));
+        info!("time stamp: {:#?} (UTC)", time_string);
+
+        // get and print r/w tuple assume if there is a comma char at index 8 of the read
+        // bytes then assume bytes 0-7 = tuple.0 and 9-16 are tuple.1
+        if test_bytes[8] == b',' {
+            let mut second_int_bytes = [0; 8];
+            for mut i in 9..17 {
+                second_int_bytes[i - 9] = test_bytes[i];
+            }
+            let second_int = i64::from_ne_bytes(second_int_bytes);
+            info!("read requests: {:#?}", time_int);
+            info!("write requests: {:#?}", second_int)
+        }
+        let mut data_string = match str::from_utf8(&test_bytes){
+            Ok(data) => data,
+            Err(e) => "<data not a valid string>"
+        }.to_string();
+        // change trailing 0 chars into empty string
+        data_string.retain(|c| c != '\0');
+        info!("data string: {:#?}", data_string)
 }

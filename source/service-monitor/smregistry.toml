@@ -1,5 +1,5 @@
 [[service]]
-name = "service-monitor_gtrand"
+name = "gtrand"
 type = "daemon"
 args = [ "0" ]
 manual_override = true

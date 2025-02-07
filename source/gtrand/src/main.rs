@@ -25,7 +25,7 @@ use rand_core::SeedableRng;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::num::Wrapping;
-use gtrand::ManagedScheme;
+use gtrand::Managment;
 
 // This Daemon implements a Cryptographically Secure Random Number Generator
 // that does not block on read - i.e. it is equivalent to linux /dev/urandom
@@ -111,7 +111,7 @@ struct RandScheme {
     // Trying to create a HashMap causes a system crash.
     // <file number, information about the open file>
     next_fd: Wrapping<usize>,
-    managment: ManagedScheme,
+    managment: Managment,
 }
 
 impl RandScheme {
@@ -128,7 +128,7 @@ impl RandScheme {
             },
             open_descriptors: BTreeMap::new(),
             next_fd: Wrapping(0),
-            managment: ManagedScheme::new(),
+            managment: Managment::new(),
         }
     }
 
@@ -381,6 +381,7 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
         .expect("randd: failed to mark daemon as ready");
 
     libredox::call::setrens(0, 0).expect("randd: failed to enter null namespace");
+    scheme.managment.start_managment("started gtrand!");
 
     while let Some(request) = scheme
         .socket
