@@ -9,6 +9,13 @@ use syscall::{error::*, MODE_CHR};
 // Ty is to leave room for other types of monitor schemes
 // maybe an int or enum for the command, string buffer for service name?
 
+// todo: replace cmd u32 in SMScheme with enum we can reuse and better define
+// pub enum Cmd {
+//     Start(String),
+//     Stop(String),
+//     List
+// }
+
 
 pub struct SMScheme {
     pub cmd: u32, 
