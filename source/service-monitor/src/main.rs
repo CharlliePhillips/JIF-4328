@@ -116,56 +116,6 @@ fn main() {
     .expect("service-monitor: failed to daemonize");
 }
 
-fn test_service_data(service: &mut ServiceEntry) {
-        warn!("testing service data!");
-        let Ok(child_scheme) = &mut OpenOptions::new().write(true)
-        .open(service.scheme_path.clone()) else {panic!()};
-        // set the request that we want and write it to the scheme
-        let test_req= b"request_count";
-
-        File::write(child_scheme, test_req).expect("could not complete test request");
-        // set up the read buffer and read from the scheme into it
-        let read_buffer: &mut [u8] = &mut [b'0'; 32];
-        File::read(child_scheme, read_buffer).expect("could not read test response");
-        // process the buffer based on the request
-        let mut test_bytes: [u8; 32] = [0; 32];
-        for mut i in 0..32 {
-            //info!("byte {} reads {}", i, read_buffer[i]);
-            test_bytes[i] = read_buffer[i];
-            i += 1;
-        }
-
-        info!("data bytes: {:#?}", test_bytes);
-        let mut time_bytes = [0; 8];
-        for mut i in 0..8 {
-            time_bytes[i] = test_bytes[i];
-        }
-        
-        // get and print the timestamp
-        let time_int = i64::from_ne_bytes(time_bytes);
-        let time = DateTime::from_timestamp(time_int, 0).unwrap();
-        let time_string = format!("{}", time.format("%m/%d/%y %H:%M"));
-        info!("time stamp: {:#?} (UTC)", time_string);
-
-        // get and print r/w tuple assume if there is a comma char at index 8 of the read
-        // bytes then assume bytes 0-7 = tuple.0 and 9-16 are tuple.1
-        if test_bytes[8] == b',' {
-            let mut second_int_bytes = [0; 8];
-            for mut i in 9..17 {
-                second_int_bytes[i - 9] = test_bytes[i];
-            }
-            let second_int = i64::from_ne_bytes(second_int_bytes);
-            info!("read requests: {:#?}", time_int);
-            info!("write requests: {:#?}", second_int)
-        }
-        let mut data_string = match str::from_utf8(&test_bytes){
-            Ok(data) => data,
-            Err(e) => "<data not a valid string>"
-        }.to_string();
-        // change trailing 0 chars into empty string
-        data_string.retain(|c| c != '\0');
-        info!("data string: {:#?}", data_string)
-}
 /// Checks if the service-monitor's command value has been changed and performs the appropriate action.
 /// Currently supports the following commands:
 /// - stop: check if service is running, if it is then get pid and stop
@@ -206,6 +156,17 @@ fn eval_cmd(services: &mut BTreeMap<String, ServiceEntry>, sm_scheme: &mut SMSch
                             .open(service.scheme_path.clone()) else {panic!()};
                             let pid_req = b"pid";
                             let pid: usize = File::write(child_scheme, pid_req).expect("could not get pid");
+                            
+                            let read_buffer: &mut [u8] = &mut [b'0'; 32];
+                            File::read(child_scheme, read_buffer).expect("could not read test response");
+                            // process the buffer based on the request
+                            let mut pid_bytes: [u8; 8] = [0; 8];
+                            for mut i in 0..8 {
+                                //info!("byte {} reads {}", i, read_buffer[i]);
+                                pid_bytes[i] = read_buffer[i];
+                                i += 1;
+                            }
+                            let pid = usize::from_ne_bytes(pid_bytes);
                             service.pid = pid;
                             info!("child started with pid: {:#?}", service.pid);
                             service.running = true;
