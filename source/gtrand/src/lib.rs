@@ -34,7 +34,6 @@ impl Managment {
         }
         for i in 0..message_len {
             self.message[i] = message.as_bytes()[i];
-
         }
     }
 
