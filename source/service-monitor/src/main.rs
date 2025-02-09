@@ -40,23 +40,28 @@ fn main() {
         let Ok(child_scheme) = &mut OpenOptions::new().write(true)
         .open(service.scheme_path.clone()) else {panic!()};
         // set the request that we want and write it to the scheme
-        let pid_req = b"pid";
-        File::write(child_scheme, pid_req).expect("could not request pid");
+    // let pid_req = b"pid";
+    // File::write(child_scheme, pid_req).expect("could not request pid");
         // set up the read buffer and read from the scheme into it
-        let mut read_buffer: &mut [u8] = &mut [b'0'; 32];
-        File::read(child_scheme, read_buffer).expect("could not read pid");
-        // process the buffer based on the request (pid)
-        let mut pid_bytes: [u8; 8] = [0; 8];
-        for mut i in 0..7 {
-            info!("byte {} reads {}", i, read_buffer[i]);
-            pid_bytes[i] = read_buffer[i];
-            i += 1;
-        }
-        // this last line would instead be something like let pid = getSvcAttr(service, "pid")
-        let pid = usize::from_ne_bytes(pid_bytes);
+        if let Ok(pid_scheme) = syscall::call::dup(child_scheme.as_raw_fd() as usize, b"pid") {
 
-        service.pid = pid;
-        info!("started {} with pid: {:#?}", name, pid);
+            let mut read_buffer: &mut [u8] = &mut [b'0'; 32];
+            syscall::call::read(pid_scheme, read_buffer).expect("could not read pid");
+            // process the buffer based on the request (pid)
+            let mut pid_bytes: [u8; 8] = [0; 8];
+            for mut i in 0..7 {
+                info!("byte {} reads {}", i, read_buffer[i]);
+                pid_bytes[i] = read_buffer[i];
+                i += 1;
+            }
+            // this last line would instead be something like let pid = getSvcAttr(service, "pid")
+            let pid = usize::from_ne_bytes(pid_bytes);
+
+            service.pid = pid;
+            info!("started {} with pid: {:#?}", name, pid);
+        } else {
+            panic!("could not open pid scheme!");
+        }
     }
 
 
