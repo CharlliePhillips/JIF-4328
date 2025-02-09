@@ -377,7 +377,7 @@ impl SchemeMut for RandScheme {
 fn daemon(daemon: redox_daemon::Daemon) -> ! {
     let socket = Socket::<V2>::create("gtrand").expect("randd: failed to create rand scheme");
 
-    let mut scheme = RandBaseScheme::new(socket);
+    let mut scheme = BaseScheme::<RandScheme>::new(socket);
     daemon
         .ready()
         .expect("randd: failed to mark daemon as ready");
@@ -415,7 +415,7 @@ struct MessageScheme([u8;32]);
 struct ControlScheme();
 
 
-struct RandBaseScheme<'a> {
+struct BaseScheme<'a, RandScheme> {
     main_scheme: RandScheme,
     pid_scheme: PidScheme,
     requests_scheme: RequestsScheme,
@@ -428,12 +428,12 @@ struct RandBaseScheme<'a> {
     managment: Managment,
 }
 
-impl RandBaseScheme<'_> {
+impl BaseScheme<'_, RandScheme> {
     // how do lifetimes work here? I think the above a ties the 
     // scheme references to the reference of RandBaseScheme, but the object
     // that returns here lasts how long?
-    fn new(socket: Socket) -> RandBaseScheme {
-        RandBaseScheme {
+    fn new(socket: Socket) -> BaseScheme<RandScheme> {
+        BaseScheme::<RandScheme> {
             // how do we assume that any main scheme will have this?
             main_scheme: RandScheme::new(socket),
             pid_scheme: PidScheme(
@@ -448,7 +448,7 @@ impl RandBaseScheme<'_> {
         }
     }
 }
-impl SchemeMut for RandBaseScheme<'_> {
+impl SchemeMut for BaseScheme<'_, RandScheme> {
     fn open(&mut self, _path: &str, _flags: usize, _uid: u32, _gid: u32) -> Result<usize> {
         let result = self.main_scheme.open();
         if let Ok(id) = result {
