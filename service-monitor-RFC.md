@@ -111,7 +111,9 @@ Clear short-term stats for <daemon_name>.
 
 ## APIs and Message Flows 
 ### Command Line & Service Monitor API 
-- The command line application described above will have corresponding API calls to the Service Monitor daemon that could also be called by future OS components. This will work similarly to the protocols for other services described below, but with the behavior described above. 
+- The command line application described above will have corresponding API calls to the Service Monitor daemon that could also be called by future OS components. These are accessed by using the `write` syscall to make a request to the service monitor and `read` to read a response.
+#### Managed Service API (new-style daemons)
+- Each managed service will have it's main/primary scheme attached to a `BaseScheme` containing several sub-schemes that hold managment data. The BaseScheme will present the main/primary scheme the same way it would be accesed if it was not managed. Data from these managment schemes can be accessed by calling `dup` on the service's scheme and then `read` or `write` on the resulting file descriptor.
 ### Service Start (legacy/old-style daemons) 
 - Use rust standard library to build a command that starts the daemon. Once it is started, the Service Manager does not need to do anything. 
 ### Service Start (new-style daemons) 
@@ -119,7 +121,7 @@ Clear short-term stats for <daemon_name>.
 ### Service Status, Failure Detection & Recovery
 - Each service/daemon in redox has a scheme associated with it where data is stored. This scheme can be accessed as a file with the `open` syscall when passed the correct path. The file descriptor from a fully managed service can be passed to the `dup` syscall along with a byte array containing the name of the desired managment data in order to get a file descriptor pointing to that data. 
 ex:
-```
+```rust
 let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open chld scheme");
 // dup into the pid scheme in order to read that data
 if let Ok(pid_scheme) = libredox::call::dup(child_scheme, b"pid") {
@@ -128,10 +130,18 @@ if let Ok(pid_scheme) = libredox::call::dup(child_scheme, b"pid") {
     libredox::call::read(pid_scheme, read_buffer).expect("could not read pid");
     ...
 ```
-#TODO UPDATE BELOW
-- While getattr and setattr are still in development the service monitor will first use the `write` syscall to send a string query to a service through it's scheme. When the service recieves this request it calls a `handle_sm_request` method moving the requested data into a 32 byte array `response_buffer` and `response_pending` is set to true. The service monitor can then use the `read` syscall to get the response. When the service processes the read it will see a response pending and the `response_buffer` will be copied to the buffer passed to `read`.
 
-- File descriptor and registry.toml info for each monitored service is used with the protocols below to collect data on each service. This will then be used to restart or restore processes when they are not working correctly 
+- While getattr and setattr are still in development the service monitor will use the `read` syscall on a file descriptor pointing to a scheme containing the desired data. When the service recieves this request it finds the scheme associated with that fd and transparently calls read on that particular scheme. The requested data is written to the buffer passed to read for processing. 
+
+- The `write` syscall can be used to modify particular managment sub-schemes.
+ex:
+```rust
+let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open chld scheme");
+if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
+    libredox::call::write(message_scheme, b"A new message!")...
+```
+
+- The file descriptor(s) and registry.toml info for each monitored service is used with the protocols below to collect data on each service. This will then be used to restart or restore processes when they are not working correctly 
 
 - Protocalls here are a 32-byte string passed to getattr()/setattr() with a file descriptor of the service to request statistics from. The file descriptor is obtained by opening the service’s scheme path as a file. A managed service’s scheme will get one of these strings in it’s get/setattr and match it to a function that is part of the managed scheme trait to read and/or write the relevant data to/from the scheme. While getattr and setattr are being implemented read and write will be used instead. 
     - `active` Boolean indicates if a service is running, it is set to false when read, and set back to true by the service if it is still running. 
@@ -190,7 +200,8 @@ Depends = []
     - The daemon loop should begin monitoring as the first service has started. The startup should probably be a child thread of the main loop so it could also be used for starting new services after boot is complete. On some time period the service monitor will check each of it’s client services for a new message or errors, request count, and a response time will be recorded. This information will then be used to report and potentially recover from any service failures. The service monitor will also handle API requests which may require data from and additional requests to the client services. 
 
 3. **API**
-    - An API will be provided to the Service Monitor daemon via an additional trait for it’s scheme. These traits when implemented will retrieve information recorded in the Running loop for whatever is program is calling them, or trigger the Service Monitor to start/kill a service. This API will allow code to be triggered by the getattr/setattr syscalls from other applications. 
+    - An API will be provided to the Service Monitor via `read` and `write` on it’s scheme (until get and setattr are ready). Calls when implemented will retrieve information recorded in the Running loop for whatever is program is calling them, or trigger the Service Monitor to start/kill a service. This API will allow code to be triggered by the getattr/setattr syscalls from other applications.
+    - A managment API will be provided for each managed scheme through a `BaseScheme`. This struct holds the primary scheme for the service as well as several others containg the data needed for the service monitor. The `read` and `write` syscalls will be used to access these sub-schemes until `getattr` and `setattr` are ready. The primary scheme will be accessable through the BaseScheme using the same convention as before to ensure compatibility with existing code.
 
 4. **CLI**
     - A relatively simple program to serve as the user interface that parses command line arguments and makes the corresponding getattr/setattr calls to the Service Monitor API. It then will take any information from the Service Monitor and format it to be printed for the user. 
@@ -215,6 +226,7 @@ Depends = []
 - Should the Device Discovery remove formerly discovered services or manually added services that aren’t found for stability? 
 - Daemon dependencies will come from `Cargo.toml/.lock`? `Registry.toml`? 
 - What happens when a discovered service exists in the registry but the parameters discovered are different then those in the registry, update? Will we need an additional flag in the registry for manual override of this update? 
+- Should a file descriptor for the child's BaseScheme be recorded, the base scheme and managment descriptors? Or should the service monitor open and close file descriptors as it runs.
 - Thread safe function wrappers for getattr/setattr. One thread monitoring all wrappers or a monitor thread for each wrapper? How long, how would a user configure timeout time, should they? 
 - Automatic restart – triggered on faulting daemon. Need to consider how to detect service “bootloop” to prevent dead service hogging resources. 
 - For ‘not responding’  how many times and how short of a time period? Is this something determined by daemon, historic data, arbitrary numbers to be manually tuned for now? 
