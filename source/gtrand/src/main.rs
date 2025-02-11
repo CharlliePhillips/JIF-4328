@@ -30,6 +30,7 @@ use std::sync::*;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use chrono::Local;
+use std::ops::Deref;        
 
 // This Daemon implements a Cryptographically Secure Random Number Generator
 // that does not block on read - i.e. it is equivalent to linux /dev/urandom
@@ -438,8 +439,8 @@ impl BaseScheme {
     // how do lifetimes work here? I think the above a ties the 
     // scheme references to the reference of RandBaseScheme, but the object
     // that returns here lasts how long?
-    fn new(main_scheme: impl Scheme + 'static) -> BaseScheme {
-        let mut new: BaseScheme = Self {
+    fn new(main_scheme: impl Scheme + 'static) -> Self {
+        Self {
             // how do we assume that any main scheme will have this?
             main_scheme: Arc::new(Mutex::new(Box::new(main_scheme))),
             pid_scheme: Arc::new(Mutex::new(Box::new(
@@ -461,88 +462,99 @@ impl BaseScheme {
             next_main_id: 5.into(),
             next_mgmt_id: 9999.into(),
             managment: Managment::new(),
-        };
-        let main_id = new.next_main_id.fetch_add(1, Ordering::Relaxed);
-        new.handlers.insert(main_id, new.main_scheme.clone());
-        let mut mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-        new.handlers.insert(mgmt_id, new.pid_scheme.clone());
-        mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-        new.handlers.insert(mgmt_id, new.requests_scheme.clone());
-        mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-        new.handlers.insert(mgmt_id, new.message_scheme.clone());
-        mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-        new.handlers.insert(mgmt_id, new.control_scheme.clone());
+        }
+        //let main_id = new.next_main_id.fetch_add(1, Ordering::Relaxed);
+        //new.handlers.insert(main_id, new.main_scheme.clone());
+        //let mut mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+        //new.handlers.insert(mgmt_id, new.pid_scheme.clone());
+        //mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+        //new.handlers.insert(mgmt_id, new.requests_scheme.clone());
+        //mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+        //new.handlers.insert(mgmt_id, new.message_scheme.clone());
+        //mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+        //new.handlers.insert(mgmt_id, new.control_scheme.clone());
         
-        new
+        //new
     }
 
     fn handler(&self, id: usize) -> Result<SubSchemeGuard>{
-        let subscheme = self.handlers.get(&id).expect("could not get handler for id: {id}");
-        let handler = subscheme.lock();
-        Ok(handler.expect("Poison error, failed to get handler."))
+        let subscheme = self.handlers.get(&id);
+        if let Ok(handler) = subscheme.unwrap().lock() {
+            Ok(handler)
+        } else {
+            Err(syscall::Error {errno: EBADF})
+        }
     }
 }
 impl Scheme for BaseScheme {
-    fn open(&mut self, path: &str, _flags: usize, uid: u32, gid: u32) -> Result<usize> {
-        Ok(0)
-    }
-    fn dup(&mut self, _file: usize, buf: &[u8]) -> Result<usize> {
-        match buf {
-            b"pid" => {
-                let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-                self.handlers.insert(new_id, self.pid_scheme.clone());
-                Ok(new_id)
-            }
+    fn xopen(&mut self, path: &str, flags: usize,  caller: &CallerCtx) -> Result<OpenResult> {
+        let mut main_lock = self.main_scheme.lock().expect("poisoned lock");
+        match main_lock.xopen("", flags, caller) {
+            Ok(OpenResult::ThisScheme{number, flags}) => {
+                self.handlers.insert(number, self.main_scheme.clone());
+                Ok(OpenResult::ThisScheme{number, flags})
+            },
 
-            b"time_stamp" => {
-                let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-                self.handlers.insert(new_id, self.time_stamp_scheme.clone());
-                Ok(new_id)
-            }
-
-
-            b"message" => {
-                let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-                self.handlers.insert(new_id, self.message_scheme.clone());
-                self.write(new_id, b"test message", 0, 0);
-                Ok(new_id)
-            }
-
-            b"request_count" => {
-                let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-                self.handlers.insert(new_id, self.requests_scheme.clone());
-                Ok(new_id)
-            }
-
-
-            b"main" => {
-                let new_id = self.next_main_id.fetch_add(1, Ordering::Relaxed);
-                self.handlers.insert(new_id, self.main_scheme.clone());
-                Ok(new_id)
-            }
-
-            // default assume the main scheme is desired
             _ => {
-                let new_id = self.next_main_id.fetch_add(1, Ordering::Relaxed);
-                self.handlers.insert(new_id, self.main_scheme.clone());
-                Ok(new_id)
-           }
+                Err(syscall::Error {errno: EBADF})
+            }
+        }
+    }
+    fn dup(&mut self, old_id: usize, buf: &[u8]) -> Result<usize> {
+         
+        if self.handlers.contains_key(&old_id) {
+            match buf {
+                b"pid" => {
+                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                    self.handlers.insert(new_id, self.pid_scheme.clone());
+                    Ok(new_id)
+                }
+
+                b"time_stamp" => {
+                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                    self.handlers.insert(new_id, self.time_stamp_scheme.clone());
+                    Ok(new_id)
+                }
+
+                b"message" => {
+                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                    self.handlers.insert(new_id, self.message_scheme.clone());
+                    self.write(new_id, b"test message", 0, 0);
+                    Ok(new_id)
+                }
+
+                b"request_count" => {
+                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                    self.handlers.insert(new_id, self.requests_scheme.clone());
+                    Ok(new_id)
+                }
+
+                b"" => {
+                    let new_id = self.next_main_id.fetch_add(1, Ordering::Relaxed);
+                    self.handlers.insert(new_id, self.main_scheme.clone());
+                    Ok(new_id)
+                }
+
+                _ => {
+                    if let handler = self.handlers.get(&old_id).expect("") {
+                        let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                        self.handlers.insert(new_id, handler.clone());
+                        Ok(new_id)
+                    } else {
+                        Err(syscall::Error {errno: EBADF})
+                    }
+               }
+            }
+        } else {
+            Err(syscall::Error {errno: EBADF})
         }
     }
     fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        if let Ok(mut handler) = self.handler(id) {
-            handler.read(id, buf, _offset, _flags)
-        } else {
-            Err(syscall::Error {errno: EBADF})
-        }
+        self.handler(id)?.read(id, buf, _offset, _flags)
     }
 
     fn write(&mut self, id: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        if let Ok(mut handler) = self.handler(id) {
-            handler.write(id, buffer, _offset, _flags)
-        } else {
-            Err(syscall::Error {errno: EBADF})
-        }       
+        self.handler(id)?.write(id, buffer, _offset, _flags)
     }
 
     fn fcntl(&mut self, _id: usize, _cmd: usize, _arg: usize) -> Result<usize> {
@@ -571,12 +583,14 @@ impl Scheme for BaseScheme {
     }
 
     fn close(&mut self, id: usize) -> Result<usize> {
-        if let Ok(mut scheme) = self.handler(id) {
+        let mut scheme = self.handler(id)?;
+        if self.handlers.contains_key(&id) {
             let result = scheme.close(id);
-            result
-        } else {
-            Err(syscall::Error {errno: EBADF})
+            drop(scheme);
+            self.handlers.remove(&id);
+            return result;
         }
+        Err(syscall::Error {errno: EBADF})
     }
 
     fn fstat(&mut self, _: usize, stat: &mut syscall::Stat) -> Result<usize> {
