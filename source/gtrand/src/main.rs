@@ -25,7 +25,7 @@ use rand_core::SeedableRng;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::num::Wrapping;
-use gtrand::Managment;
+use gtrand::BaseScheme;
 use std::sync::*;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -117,7 +117,6 @@ struct RandScheme {
     // Trying to create a HashMap causes a system crash.
     // <file number, information about the open file>
     next_fd: Wrapping<usize>,
-    managment: Managment,
 }
 
 impl RandScheme {
@@ -133,7 +132,6 @@ impl RandScheme {
             },
             open_descriptors: BTreeMap::new(),
             next_fd: Wrapping(0),
-            managment: Managment::new(),
         }
     }
 
@@ -279,15 +277,11 @@ impl Scheme for RandScheme {
         self.can_perform_op_on_fd(file, MODE_READ)?;
         
         // check the managment struct to see if a response is pending
-        if self.managment.response_pending {
             // if we have a response waiting then the buffer should have that data
-            self.managment.fill_buffer(buf);
-        } else {
             // Setting the stream will ensure that if two clients are reading concurrently, they won't get the same numbers
-            self.prng.set_stream(file as u64); // Should probably find a way to re-instate the counter for this stream, but
-                                               // not doing so won't make the output any less 'random'
-            self.prng.fill_bytes(buf)
-        }
+        self.prng.set_stream(file as u64); // Should probably find a way to re-instate the counter for this stream, but
+                                           // not doing so won't make the output any less 'random'
+        self.prng.fill_bytes(buf);
         Ok(buf.len())
     }
 
@@ -304,14 +298,12 @@ impl Scheme for RandScheme {
         
         // this handler returns true if a valid request was passed on the buffer
         // in this case we don't want to run the service's code on the request
-        if  !self.managment.handle_sm_request(buf) {
-            let mut rng_buf: [u8; SEED_BYTES] = [0; SEED_BYTES];
-            self.prng.fill_bytes(&mut rng_buf);
-            let mut rng_vec = Vec::new();
-            rng_vec.extend(&rng_buf);
-            rng_vec.extend(buf);
-            self.reseed_prng(&rng_vec);
-        }
+        let mut rng_buf: [u8; SEED_BYTES] = [0; SEED_BYTES];
+        self.prng.fill_bytes(&mut rng_buf);
+        let mut rng_vec = Vec::new();
+        rng_vec.extend(&rng_buf);
+        rng_vec.extend(buf);
+        self.reseed_prng(&rng_vec);
         Ok(buf.len())
 
     }
@@ -409,254 +401,3 @@ fn main() {
     redox_daemon::Daemon::new(daemon).expect("randd: failed to daemonize");
 }
 
-type ManagmentSubScheme = Arc<Mutex<Box<dyn Scheme>>>;
-type SubSchemeGuard<'a> = MutexGuard<'a, Box<dyn Scheme>>;
-
-struct PidScheme(u64);
-struct RequestsScheme(u64, u64);
-struct TimeStampScheme(i64);
-struct MessageScheme([u8;32]);
-// will hold a command enum?
-struct ControlScheme();
-
-
-struct BaseScheme {
-    main_scheme: ManagmentSubScheme,
-    pid_scheme: ManagmentSubScheme,
-    requests_scheme: ManagmentSubScheme,
-    time_stamp_scheme: ManagmentSubScheme,
-    message_scheme: ManagmentSubScheme,
-    control_scheme: ManagmentSubScheme,
-    // handlers holds a map of the file descriptors/id to
-    // the actual scheme object
-    handlers: BTreeMap<usize, ManagmentSubScheme>,
-    next_main_id: AtomicUsize,
-    next_mgmt_id: AtomicUsize,
-    managment: Managment,
-}
-
-impl BaseScheme {
-    // how do lifetimes work here? I think the above a ties the 
-    // scheme references to the reference of RandBaseScheme, but the object
-    // that returns here lasts how long?
-    fn new(main_scheme: impl Scheme + 'static) -> Self {
-        Self {
-            // how do we assume that any main scheme will have this?
-            main_scheme: Arc::new(Mutex::new(Box::new(main_scheme))),
-            pid_scheme: Arc::new(Mutex::new(Box::new(
-                PidScheme(
-                    std::process::id().try_into().unwrap()
-                )))),
-            requests_scheme: Arc::new(Mutex::new(Box::new(
-                RequestsScheme(13,42)
-                ))),
-            time_stamp_scheme: Arc::new(Mutex::new(Box::new(
-                TimeStampScheme(
-                    Local::now().timestamp()
-                )))),
-            message_scheme: Arc::new(Mutex::new(Box::new(
-                MessageScheme([0; 32])))),
-            control_scheme: Arc::new(Mutex::new(Box::new(
-                ControlScheme()))),
-            handlers: BTreeMap::new(),
-            next_main_id: 5.into(),
-            next_mgmt_id: 9999.into(),
-            managment: Managment::new(),
-        }
-        //let main_id = new.next_main_id.fetch_add(1, Ordering::Relaxed);
-        //new.handlers.insert(main_id, new.main_scheme.clone());
-        //let mut mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-        //new.handlers.insert(mgmt_id, new.pid_scheme.clone());
-        //mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-        //new.handlers.insert(mgmt_id, new.requests_scheme.clone());
-        //mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-        //new.handlers.insert(mgmt_id, new.message_scheme.clone());
-        //mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-        //new.handlers.insert(mgmt_id, new.control_scheme.clone());
-        
-        //new
-    }
-
-    fn handler(&self, id: usize) -> Result<SubSchemeGuard>{
-        let subscheme = self.handlers.get(&id);
-        if let Ok(handler) = subscheme.unwrap().lock() {
-            Ok(handler)
-        } else {
-            Err(syscall::Error {errno: EBADF})
-        }
-    }
-}
-impl Scheme for BaseScheme {
-    fn xopen(&mut self, path: &str, flags: usize,  caller: &CallerCtx) -> Result<OpenResult> {
-        let mut main_lock = self.main_scheme.lock().expect("poisoned lock");
-        match main_lock.xopen("", flags, caller) {
-            Ok(OpenResult::ThisScheme{number, flags}) => {
-                self.handlers.insert(number, self.main_scheme.clone());
-                Ok(OpenResult::ThisScheme{number, flags})
-            },
-
-            _ => {
-                Err(syscall::Error {errno: EBADF})
-            }
-        }
-    }
-    fn dup(&mut self, old_id: usize, buf: &[u8]) -> Result<usize> {
-         
-        if self.handlers.contains_key(&old_id) {
-            match buf {
-                b"pid" => {
-                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-                    self.handlers.insert(new_id, self.pid_scheme.clone());
-                    Ok(new_id)
-                }
-
-                b"time_stamp" => {
-                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-                    self.handlers.insert(new_id, self.time_stamp_scheme.clone());
-                    Ok(new_id)
-                }
-
-                b"message" => {
-                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-                    self.handlers.insert(new_id, self.message_scheme.clone());
-                    self.write(new_id, b"test message", 0, 0);
-                    Ok(new_id)
-                }
-
-                b"request_count" => {
-                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-                    self.handlers.insert(new_id, self.requests_scheme.clone());
-                    Ok(new_id)
-                }
-
-                b"" => {
-                    let new_id = self.next_main_id.fetch_add(1, Ordering::Relaxed);
-                    self.handlers.insert(new_id, self.main_scheme.clone());
-                    Ok(new_id)
-                }
-
-                _ => {
-                    if let handler = self.handlers.get(&old_id).expect("") {
-                        let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
-                        self.handlers.insert(new_id, handler.clone());
-                        Ok(new_id)
-                    } else {
-                        Err(syscall::Error {errno: EBADF})
-                    }
-               }
-            }
-        } else {
-            Err(syscall::Error {errno: EBADF})
-        }
-    }
-    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        self.handler(id)?.read(id, buf, _offset, _flags)
-    }
-
-    fn write(&mut self, id: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        self.handler(id)?.write(id, buffer, _offset, _flags)
-    }
-
-    fn fcntl(&mut self, _id: usize, _cmd: usize, _arg: usize) -> Result<usize> {
-        Ok(0)
-    }
-    fn fsize(&mut self, _id: usize) -> Result<u64> {
-        Ok(0)
-    }
-
-    fn ftruncate(&mut self, _id: usize, _len: usize) -> Result<usize> {
-        Ok(0)
-    }
-
-    fn fpath(&mut self, _id: usize, buf: &mut [u8]) -> Result<usize> {
-        let mut i = 0;
-        let scheme_path = b"gtrand";
-        while i < buf.len() && i < scheme_path.len() {
-            buf[i] = scheme_path[i];
-            i += 1;
-        }
-        Ok(i)
-    }
-
-    fn fsync(&mut self, _file: usize) -> Result<usize> {
-        Ok(0)
-    }
-
-    fn close(&mut self, id: usize) -> Result<usize> {
-        let mut scheme = self.handler(id)?;
-        if self.handlers.contains_key(&id) {
-            let result = scheme.close(id);
-            drop(scheme);
-            self.handlers.remove(&id);
-            return result;
-        }
-        Err(syscall::Error {errno: EBADF})
-    }
-
-    fn fstat(&mut self, _: usize, stat: &mut syscall::Stat) -> Result<usize> {
-        stat.st_mode = 0o666 | MODE_CHR;
-        stat.st_size = 0;
-        stat.st_blocks = 0;
-        stat.st_blksize = 4096;
-        stat.st_nlink = 1;
-
-        Ok(0)
-    }
-}
-
-impl Scheme for PidScheme {
-    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        // get data as byte array
-        let pid_bytes = self.0.to_ne_bytes();
-        // fill passed buffer
-        fill_buffer(buf, &pid_bytes);
-        Ok(buf.len())
-    }
-}
-impl Scheme for RequestsScheme {
-    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        let read_bytes = &self.0.to_ne_bytes();
-        let write_bytes = &self.1.to_ne_bytes();
-        let mut request_count_bytes: [u8; 17] = [b'\0'; 17];
-        request_count_bytes[8] = b',';
-        for i in 0..8 {
-            request_count_bytes[i] = read_bytes[i];
-            request_count_bytes[i + 9] = write_bytes[i];
-        }
-        fill_buffer(buf, &request_count_bytes);
-        Ok(buf.len())
-    }
-}
-impl Scheme for TimeStampScheme {
-    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        let time_stamp = self.0.to_ne_bytes();
-        
-        fill_buffer(buf, &time_stamp);
-        Ok(buf.len())
-    }
-}
-impl Scheme for MessageScheme {
-    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        // message is already stored as an array of bytes
-        fill_buffer(buf, &self.0);
-        Ok(buf.len())
-    }
-    
-    fn write(&mut self, id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        // message is already stored as an array of bytes
-        fill_buffer(&mut self.0, buf);
-        Ok(buf.len())
-    }
-}
-
-impl Scheme for ControlScheme {
-
-}
-
-fn fill_buffer(dest: &mut [u8], src: &[u8]) {
-    let mut i = 0;
-    for byte in src {
-        dest[i] = *byte;
-        i += 1;
-    }
-}
