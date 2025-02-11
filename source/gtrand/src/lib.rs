@@ -133,7 +133,7 @@ impl Scheme for BaseScheme {
                 // the given id.
                 _ => {
                     if let handler = self.handlers.get(&old_id).ok_or(Error::new(EBADF))? {
-                        let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                        let new_id = handler.dup(old_id, buf)?;
                         self.handlers.insert(new_id, handler.clone());
                         Ok(new_id)
                     } else {
