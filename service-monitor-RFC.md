@@ -117,8 +117,18 @@ Clear short-term stats for <daemon_name>.
 ### Service Start (new-style daemons) 
 - Same as legacy, but the file descriptor for the new daemon is recorded by the SM to reference later.  
 ### Service Status, Failure Detection & Recovery
-- Each service/daemon in redox has a scheme associated with it where data is stored. If a service fully supports the service monitor then it's scheme will store a struct of type `Managment`. The Managment struct is implemented to store and track the service's data needed by the service monitor. On top of this data and methods to access it.
-
+- Each service/daemon in redox has a scheme associated with it where data is stored. This scheme can be accessed as a file with the `open` syscall when passed the correct path. The file descriptor from a fully managed service can be passed to the `dup` syscall along with a byte array containing the name of the desired managment data in order to get a file descriptor pointing to that data. 
+ex:
+```
+let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open chld scheme");
+// dup into the pid scheme in order to read that data
+if let Ok(pid_scheme) = libredox::call::dup(child_scheme, b"pid") {
+// now we can read the pid onto the buffer from it's subscheme
+    let mut read_buffer: &mut [u8] = &mut [b'0'; 32];
+    libredox::call::read(pid_scheme, read_buffer).expect("could not read pid");
+    ...
+```
+#TODO UPDATE BELOW
 - While getattr and setattr are still in development the service monitor will first use the `write` syscall to send a string query to a service through it's scheme. When the service recieves this request it calls a `handle_sm_request` method moving the requested data into a 32 byte array `response_buffer` and `response_pending` is set to true. The service monitor can then use the `read` syscall to get the response. When the service processes the read it will see a response pending and the `response_buffer` will be copied to the buffer passed to `read`.
 
 - File descriptor and registry.toml info for each monitored service is used with the protocols below to collect data on each service. This will then be used to restart or restore processes when they are not working correctly 
