@@ -42,7 +42,6 @@ pub struct BaseScheme {
 impl BaseScheme {
     pub fn new(main_scheme: impl Scheme + 'static) -> Self {
         Self {
-            // how do we assume that any main scheme will have this?
             main_scheme: Arc::new(Mutex::new(Box::new(main_scheme))),
             pid_scheme: Arc::new(Mutex::new(Box::new(
                 PidScheme(
@@ -79,20 +78,18 @@ impl Scheme for BaseScheme {
     fn xopen(&mut self, path: &str, flags: usize,  caller: &CallerCtx) -> Result<OpenResult> {
         // get a lock on the main scheme and attempt to open it
         let mut main_lock = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
-        match main_lock.xopen(path, flags, caller) {
-            // if we successfully open the main scheme and get ThisScheme{id,flags} then add a
-            // new ManagmentSubScheme to the list of handlers with that id.
-            Ok(OpenResult::ThisScheme{number, flags}) => {
-                self.handlers.insert(number, self.main_scheme.clone());
-                Ok(OpenResult::ThisScheme{number, flags})
-            },
-
-            // Otherwise then error including if we got OtherScheme
-            _ => {
-                Err(syscall::Error {errno: EBADF})
-            }
+        let open_res = main_lock.xopen(path, flags, caller); 
+        // if we successfully open the main scheme and get ThisScheme{id,flags} then add a
+        // new ManagmentSubScheme to the list of handlers with that id.
+        if Ok(OpenResult::ThisScheme{number, flags}) = open_res {
+            self.handlers.insert(number, self.main_scheme.clone());
+            Ok(OpenResult::ThisScheme{number, flags})
+        } else {
+            // otherwise propogate the result
+            open_res
         }
     }
+    
     fn dup(&mut self, old_id: usize, buf: &[u8]) -> Result<usize> {
         // check if we have an existing handler for this id
         if self.handlers.contains_key(&old_id) {
