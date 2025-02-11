@@ -35,7 +35,6 @@ pub struct BaseScheme {
     // handlers holds a map of the file descriptors/id to
     // the actual scheme object
     handlers: BTreeMap<usize, ManagmentSubScheme>,
-    next_main_id: AtomicUsize,
     next_mgmt_id: AtomicUsize,
     managment: Managment,
 }
@@ -61,27 +60,26 @@ impl BaseScheme {
             control_scheme: Arc::new(Mutex::new(Box::new(
                 ControlScheme()))),
             handlers: BTreeMap::new(),
-            next_main_id: 5.into(),
             next_mgmt_id: 9999.into(),
             managment: Managment::new(),
         }
     }
 
     fn handler(&self, id: usize) -> Result<SubSchemeGuard>{
-        let subscheme = self.handlers.get(&id);
-        if let Ok(handler) = subscheme.unwrap().lock() {
-            Ok(handler)
-        } else {
-            Err(syscall::Error {errno: EBADF})
+        match self.handlers.get(&id) {
+            None => Err(Error::new(EBADF)),
+            Some(subscheme) => subscheme.lock().map_err(|err|
+                Error::new(EBADF)
+            ),
         }
-    }
+   }
 }
 impl Scheme for BaseScheme {
     // add ability to select subscheme from open by path?
     fn xopen(&mut self, path: &str, flags: usize,  caller: &CallerCtx) -> Result<OpenResult> {
         // get a lock on the main scheme and attempt to open it
-        let mut main_lock = self.main_scheme.lock().expect("poisoned lock");
-        match main_lock.xopen("", flags, caller) {
+        let mut main_lock = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
+        match main_lock.xopen(path, flags, caller) {
             // if we successfully open the main scheme and get ThisScheme{id,flags} then add a
             // new ManagmentSubScheme to the list of handlers with that id.
             Ok(OpenResult::ThisScheme{number, flags}) => {
@@ -127,15 +125,14 @@ impl Scheme for BaseScheme {
 
                 // if there is nothing on the buffer then assume we want the main scheme
                 b"" => {
-                    let new_id = self.next_main_id.fetch_add(1, Ordering::Relaxed);
-                    self.handlers.insert(new_id, self.main_scheme.clone());
-                    Ok(new_id)
+                    self.main_scheme.lock().map_err(|err| Error::new(EBADF))?
+                    .dup(old_id, buf)
                 }
 
                 // if there is something unknown on the buffer but we know the id then dup
                 // the given id.
                 _ => {
-                    if let handler = self.handlers.get(&old_id).expect("") {
+                    if let handler = self.handlers.get(&old_id).ok_or(Error::new(EBADF))? {
                         let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                         self.handlers.insert(new_id, handler.clone());
                         Ok(new_id)

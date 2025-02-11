@@ -341,7 +341,7 @@ impl Scheme for RandScheme {
     }
     fn fpath(&mut self, _file: usize, buf: &mut [u8]) -> Result<usize> {
         let mut i = 0;
-        let scheme_path = b"gtrand_main";
+        let scheme_path = b"gtrand";
         while i < buf.len() && i < scheme_path.len() {
             buf[i] = scheme_path[i];
             i += 1;
