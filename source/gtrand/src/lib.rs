@@ -1,5 +1,5 @@
 use chrono::prelude::*;
-use redox_scheme::{RequestKind, SchemeMut, SignalBehavior, Socket, V2};
+use redox_scheme::{RequestKind, Scheme, SignalBehavior, Socket};
 
 pub struct Managment {
     // these bytes will hold data to be read through the scheme this is attached to

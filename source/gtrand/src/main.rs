@@ -13,12 +13,12 @@ pub const MODE_READ: u16 = 0o4;
 #[cfg(target_arch = "x86_64")]
 use raw_cpuid::CpuId;
 
-use redox_scheme::{RequestKind, Scheme, SchemeMut, SignalBehavior, Socket, V2};
+use redox_scheme::{RequestKind, Scheme, SignalBehavior, Socket, CallerCtx, OpenResult};
 use syscall::data::Stat;
 use syscall::flag::EventFlags;
 use syscall::{
     Error, Result, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC, O_CREAT,
-    O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY,
+    O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY, SchemeMut
 };
 // Create an RNG Seed to create initial seed from the rdrand intel instruction
 use rand_core::SeedableRng;
@@ -26,6 +26,10 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::num::Wrapping;
 use gtrand::Managment;
+use std::sync::*;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use chrono::Local;
 
 // This Daemon implements a Cryptographically Secure Random Number Generator
 // that does not block on read - i.e. it is equivalent to linux /dev/urandom
@@ -102,7 +106,6 @@ impl OpenFileInfo {
 
 /// Struct to represent the rand scheme.
 struct RandScheme {
-    socket: Socket,
     prng: ChaCha20Rng,
     // ChaCha20 is a Cryptographically Secure PRNG
     // https://docs.rs/rand/0.5.0/rand/prng/chacha/struct.ChaChaRng.html
@@ -118,9 +121,8 @@ struct RandScheme {
 
 impl RandScheme {
     /// Create new rand scheme from a message socket
-    fn new(socket: Socket) -> RandScheme {
+    fn new() -> RandScheme {
         RandScheme {
-            socket,
             prng: ChaCha20Rng::from_seed(create_rdrand_seed()),
             prng_stat: Stat {
                 st_mode: MODE_CHR | DEFAULT_PRNG_MODE,
@@ -227,7 +229,7 @@ fn test_scheme_perms() {
     assert!(scheme.close(fd).is_ok());
 }
 
-impl SchemeMut for RandScheme {
+impl Scheme for RandScheme {
     fn open(&mut self, path: &str, flags: usize, uid: u32, gid: u32) -> Result<usize> {
         // We are only allowing
         // reads/writes from rand:/ and rand:/urandom - the root directory on its own is passed as an empty slice
@@ -348,7 +350,7 @@ impl SchemeMut for RandScheme {
     }
     fn fpath(&mut self, _file: usize, buf: &mut [u8]) -> Result<usize> {
         let mut i = 0;
-        let scheme_path = b"gtrand";
+        let scheme_path = b"gtrand_main";
         while i < buf.len() && i < scheme_path.len() {
             buf[i] = scheme_path[i];
             i += 1;
@@ -375,9 +377,10 @@ impl SchemeMut for RandScheme {
 }
 
 fn daemon(daemon: redox_daemon::Daemon) -> ! {
-    let socket = Socket::<V2>::create("gtrand").expect("randd: failed to create rand scheme");
+    let socket = Socket::create("gtrand").expect("randd: failed to create rand scheme");
 
-    let mut scheme = BaseScheme::<RandScheme>::new(socket);
+    let randscheme = RandScheme::new();
+    let mut scheme = BaseScheme::new(randscheme);
     daemon
         .ready()
         .expect("randd: failed to mark daemon as ready");
@@ -385,17 +388,15 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
     libredox::call::setrens(0, 0).expect("randd: failed to enter null namespace");
     //scheme.managment.start_managment("started gtrand!");
 
-    while let Some(request) = scheme.main_scheme
-        .socket
+    while let Some(request) = socket
         .next_request(SignalBehavior::Restart)
         .expect("error reading packet")
     {
         let RequestKind::Call(call) = request.kind() else {
             continue;
         };
-        let response = call.handle_scheme_mut(&mut scheme);
-        scheme.main_scheme
-            .socket
+        let response = call.handle_scheme(&mut scheme);
+            socket
             .write_responses(&[response], SignalBehavior::Restart)
             .expect("error writing packet");
     }
@@ -407,6 +408,9 @@ fn main() {
     redox_daemon::Daemon::new(daemon).expect("randd: failed to daemonize");
 }
 
+type ManagmentSubScheme = Arc<Mutex<Box<dyn Scheme>>>;
+type SubSchemeGuard<'a> = MutexGuard<'a, Box<dyn Scheme>>;
+
 struct PidScheme(u64);
 struct RequestsScheme(u64, u64);
 struct TimeStampScheme(i64);
@@ -415,105 +419,127 @@ struct MessageScheme([u8;32]);
 struct ControlScheme();
 
 
-struct BaseScheme<'a, RandScheme> {
-    main_scheme: RandScheme,
-    pid_scheme: PidScheme,
-    requests_scheme: RequestsScheme,
-    time_stamp_scheme: TimeStampScheme,
-    message_scheme: MessageScheme,
-    control_scheme: ControlScheme,
+struct BaseScheme {
+    main_scheme: ManagmentSubScheme,
+    pid_scheme: ManagmentSubScheme,
+    requests_scheme: ManagmentSubScheme,
+    time_stamp_scheme: ManagmentSubScheme,
+    message_scheme: ManagmentSubScheme,
+    control_scheme: ManagmentSubScheme,
     // handlers holds a map of the file descriptors/id to
     // the actual scheme object
-    handlers: BTreeMap<usize, Box<&'a dyn Scheme>>,
+    handlers: BTreeMap<usize, ManagmentSubScheme>,
+    next_main_id: AtomicUsize,
+    next_mgmt_id: AtomicUsize,
     managment: Managment,
 }
 
-impl BaseScheme<'_, RandScheme> {
+impl BaseScheme {
     // how do lifetimes work here? I think the above a ties the 
     // scheme references to the reference of RandBaseScheme, but the object
     // that returns here lasts how long?
-    fn new(socket: Socket) -> BaseScheme<RandScheme> {
-        BaseScheme::<RandScheme> {
+    fn new(main_scheme: impl Scheme + 'static) -> BaseScheme {
+        let mut new: BaseScheme = Self {
             // how do we assume that any main scheme will have this?
-            main_scheme: RandScheme::new(socket),
-            pid_scheme: PidScheme(
-                std::process::id().try_into().unwrap()
-            ),
-            requests_scheme: RequestsScheme(0,0),
-            time_stamp_scheme: TimeStampScheme(0),
-            message_scheme: MessageScheme([0; 32]),
-            control_scheme: ControlScheme(),
+            main_scheme: Arc::new(Mutex::new(Box::new(main_scheme))),
+            pid_scheme: Arc::new(Mutex::new(Box::new(
+                PidScheme(
+                    std::process::id().try_into().unwrap()
+                )))),
+            requests_scheme: Arc::new(Mutex::new(Box::new(
+                RequestsScheme(13,42)
+                ))),
+            time_stamp_scheme: Arc::new(Mutex::new(Box::new(
+                TimeStampScheme(
+                    Local::now().timestamp()
+                )))),
+            message_scheme: Arc::new(Mutex::new(Box::new(
+                MessageScheme([0; 32])))),
+            control_scheme: Arc::new(Mutex::new(Box::new(
+                ControlScheme()))),
             handlers: BTreeMap::new(),
+            next_main_id: 5.into(),
+            next_mgmt_id: 9999.into(),
             managment: Managment::new(),
-        }
+        };
+        let main_id = new.next_main_id.fetch_add(1, Ordering::Relaxed);
+        new.handlers.insert(main_id, new.main_scheme.clone());
+        let mut mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+        new.handlers.insert(mgmt_id, new.pid_scheme.clone());
+        mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+        new.handlers.insert(mgmt_id, new.requests_scheme.clone());
+        mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+        new.handlers.insert(mgmt_id, new.message_scheme.clone());
+        mgmt_id = new.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+        new.handlers.insert(mgmt_id, new.control_scheme.clone());
+        
+        new
+    }
+
+    fn handler(&self, id: usize) -> Result<SubSchemeGuard>{
+        let subscheme = self.handlers.get(&id).expect("could not get handler for id: {id}");
+        let handler = subscheme.lock();
+        Ok(handler.expect("Poison error, failed to get handler."))
     }
 }
-impl SchemeMut for BaseScheme<'_, RandScheme> {
-    fn open(&mut self, _path: &str, _flags: usize, _uid: u32, _gid: u32) -> Result<usize> {
-        let result = self.main_scheme.open();
-        if let Ok(id) = result {
-            self.handlers.insert(id, self.main_scheme);
-        }
-        // not neccecary to rewrap the id
-        return result;
+impl Scheme for BaseScheme {
+    fn open(&mut self, path: &str, _flags: usize, uid: u32, gid: u32) -> Result<usize> {
+        Ok(0)
     }
     fn dup(&mut self, _file: usize, buf: &[u8]) -> Result<usize> {
         match buf {
             b"pid" => {
-                let result = self.pid_scheme.dup(id, buf);
-                if let Ok(id) = result  {
-                    self.handlers.insert(id, Box::new(&self.pid_scheme));
-                }
-                result
+                let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                self.handlers.insert(new_id, self.pid_scheme.clone());
+                Ok(new_id)
             }
 
             b"time_stamp" => {
-                let result = self.time_stamp_scheme.dup(id, buf);
-                if let Ok(id) = result  {
-                    self.handlers.insert(id, Box::new(&self.time_stamp_scheme));
-                }
-                result
-            } 
+                let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                self.handlers.insert(new_id, self.time_stamp_scheme.clone());
+                Ok(new_id)
+            }
+
 
             b"message" => {
-                let result = self.message_scheme.dup(id, buf);
-                if let Ok(id) = result  {
-                    self.handlers.insert(id, Box::new(&self.message_scheme));
-                }
-                result
+                let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                self.handlers.insert(new_id, self.message_scheme.clone());
+                self.write(new_id, b"test message", 0, 0);
+                Ok(new_id)
             }
 
             b"request_count" => {
-                let result = self.requests_scheme.dup(id, buf);
-                if let Ok(id) = result  {
-                    self.handlers.insert(id, Box::new(&self.requests_scheme));
-                }
-                result
+                let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                self.handlers.insert(new_id, self.requests_scheme.clone());
+                Ok(new_id)
+            }
+
+
+            b"main" => {
+                let new_id = self.next_main_id.fetch_add(1, Ordering::Relaxed);
+                self.handlers.insert(new_id, self.main_scheme.clone());
+                Ok(new_id)
             }
 
             // default assume the main scheme is desired
             _ => {
-                let result = self.main_scheme.dup(id, buf);
-                if let Ok(id) = result  {
-                    // this doesn't work because Randscheme implements SchemeMut
-                    self.handlers.insert(id, Box::new(&self.main_scheme));
-                }
-                result               
-            }
+                let new_id = self.next_main_id.fetch_add(1, Ordering::Relaxed);
+                self.handlers.insert(new_id, self.main_scheme.clone());
+                Ok(new_id)
+           }
         }
     }
     fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        if let Some(handler) = self.handlers.get(id) {
-            handler.read(buf)
+        if let Ok(mut handler) = self.handler(id) {
+            handler.read(id, buf, _offset, _flags)
         } else {
             Err(syscall::Error {errno: EBADF})
-
         }
     }
 
     fn write(&mut self, id: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        if let Some(handler) = self.handlers.get(id) {
-            handler.write(buffer)
+        if let Ok(mut handler) = self.handler(id) {
+            handler.write(id, buffer, _offset, _flags)
         } else {
             Err(syscall::Error {errno: EBADF})
         }       
@@ -531,13 +557,13 @@ impl SchemeMut for BaseScheme<'_, RandScheme> {
     }
 
     fn fpath(&mut self, _id: usize, buf: &mut [u8]) -> Result<usize> {
-        let Ok(size) = self.main_scheme.fpath(id, buf);
-
-        //let size = std::cmp::min(buf.len(), scheme_path.len());
-
-        //buf[..size].copy_from_slice(&scheme_path[..size]);
-
-        Ok(size)
+        let mut i = 0;
+        let scheme_path = b"gtrand";
+        while i < buf.len() && i < scheme_path.len() {
+            buf[i] = scheme_path[i];
+            i += 1;
+        }
+        Ok(i)
     }
 
     fn fsync(&mut self, _file: usize) -> Result<usize> {
@@ -545,8 +571,8 @@ impl SchemeMut for BaseScheme<'_, RandScheme> {
     }
 
     fn close(&mut self, id: usize) -> Result<usize> {
-        if let Some(scheme) = self.handlers.remove(id) {
-            let result = scheme.close();
+        if let Ok(mut scheme) = self.handler(id) {
+            let result = scheme.close(id);
             result
         } else {
             Err(syscall::Error {errno: EBADF})
@@ -565,7 +591,7 @@ impl SchemeMut for BaseScheme<'_, RandScheme> {
 }
 
 impl Scheme for PidScheme {
-    fn read(&self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // get data as byte array
         let pid_bytes = self.0.to_ne_bytes();
         // fill passed buffer
@@ -574,7 +600,7 @@ impl Scheme for PidScheme {
     }
 }
 impl Scheme for RequestsScheme {
-    fn read(&self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let read_bytes = &self.0.to_ne_bytes();
         let write_bytes = &self.1.to_ne_bytes();
         let mut request_count_bytes: [u8; 17] = [b'\0'; 17];
@@ -588,7 +614,7 @@ impl Scheme for RequestsScheme {
     }
 }
 impl Scheme for TimeStampScheme {
-    fn read(&self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let time_stamp = self.0.to_ne_bytes();
         
         fill_buffer(buf, &time_stamp);
@@ -596,11 +622,21 @@ impl Scheme for TimeStampScheme {
     }
 }
 impl Scheme for MessageScheme {
-    fn read(&self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // message is already stored as an array of bytes
         fill_buffer(buf, &self.0);
         Ok(buf.len())
     }
+    
+    fn write(&mut self, id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
+        // message is already stored as an array of bytes
+        fill_buffer(&mut self.0, buf);
+        Ok(buf.len())
+    }
+}
+
+impl Scheme for ControlScheme {
+
 }
 
 fn fill_buffer(dest: &mut [u8], src: &[u8]) {
