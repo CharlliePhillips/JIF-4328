@@ -77,23 +77,29 @@ impl BaseScheme {
     }
 }
 impl Scheme for BaseScheme {
+    // add ability to select subscheme from open by path?
     fn xopen(&mut self, path: &str, flags: usize,  caller: &CallerCtx) -> Result<OpenResult> {
+        // get a lock on the main scheme and attempt to open it
         let mut main_lock = self.main_scheme.lock().expect("poisoned lock");
         match main_lock.xopen("", flags, caller) {
+            // if we successfully open the main scheme and get ThisScheme{id,flags} then add a
+            // new ManagmentSubScheme to the list of handlers with that id.
             Ok(OpenResult::ThisScheme{number, flags}) => {
                 self.handlers.insert(number, self.main_scheme.clone());
                 Ok(OpenResult::ThisScheme{number, flags})
             },
 
+            // Otherwise then error including if we got OtherScheme
             _ => {
                 Err(syscall::Error {errno: EBADF})
             }
         }
     }
     fn dup(&mut self, old_id: usize, buf: &[u8]) -> Result<usize> {
-         
+        // check if we have an existing handler for this id
         if self.handlers.contains_key(&old_id) {
             match buf {
+                // if there is a matching ManagmentSubScheme name make a new id/handler for it
                 b"pid" => {
                     let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.pid_scheme.clone());
@@ -119,18 +125,22 @@ impl Scheme for BaseScheme {
                     Ok(new_id)
                 }
 
+                // if there is nothing on the buffer then assume we want the main scheme
                 b"" => {
                     let new_id = self.next_main_id.fetch_add(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.main_scheme.clone());
                     Ok(new_id)
                 }
 
+                // if there is something unknown on the buffer but we know the id then dup
+                // the given id.
                 _ => {
                     if let handler = self.handlers.get(&old_id).expect("") {
                         let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                         self.handlers.insert(new_id, handler.clone());
                         Ok(new_id)
                     } else {
+                        // we have already checked for the key so this should never run
                         Err(syscall::Error {errno: EBADF})
                     }
                }
@@ -139,6 +149,7 @@ impl Scheme for BaseScheme {
             Err(syscall::Error {errno: EBADF})
         }
     }
+    
     fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         self.handler(id)?.read(id, buf, _offset, _flags)
     }
@@ -173,14 +184,20 @@ impl Scheme for BaseScheme {
     }
 
     fn close(&mut self, id: usize) -> Result<usize> {
-        let mut scheme = self.handler(id)?;
+        // get the scheme handler for this id
         if self.handlers.contains_key(&id) {
+            // attempt to close the scheme
+            let mut scheme = self.handler(id)?;
             let result = scheme.close(id);
             drop(scheme);
+            // we want to remove this id from the handlers map regardless close is success.
+            // 'scheme' is retrieved from handlers map in 'fn handler()' so we have to drop it in
+            // order to modify the map. 
             self.handlers.remove(&id);
             return result;
+        } else {
+            Err(syscall::Error {errno: EBADF})
         }
-        Err(syscall::Error {errno: EBADF})
     }
 
     fn fstat(&mut self, _: usize, stat: &mut syscall::Stat) -> Result<usize> {
@@ -195,7 +212,7 @@ impl Scheme for BaseScheme {
 }
 
 impl Scheme for PidScheme {
-    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+    fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // get data as byte array
         let pid_bytes = self.0.to_ne_bytes();
         // fill passed buffer
@@ -204,7 +221,7 @@ impl Scheme for PidScheme {
     }
 }
 impl Scheme for RequestsScheme {
-    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+    fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let read_bytes = &self.0.to_ne_bytes();
         let write_bytes = &self.1.to_ne_bytes();
         let mut request_count_bytes: [u8; 17] = [b'\0'; 17];
@@ -218,7 +235,7 @@ impl Scheme for RequestsScheme {
     }
 }
 impl Scheme for TimeStampScheme {
-    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+    fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let time_stamp = self.0.to_ne_bytes();
         
         fill_buffer(buf, &time_stamp);
@@ -226,13 +243,13 @@ impl Scheme for TimeStampScheme {
     }
 }
 impl Scheme for MessageScheme {
-    fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+    fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // message is already stored as an array of bytes
         fill_buffer(buf, &self.0);
         Ok(buf.len())
     }
     
-    fn write(&mut self, id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
+    fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         // message is already stored as an array of bytes
         fill_buffer(&mut self.0, buf);
         Ok(buf.len())
