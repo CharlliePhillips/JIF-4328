@@ -36,10 +36,11 @@ fn main() {
         // SCRUM-39 TODO: this block should be turned into a new function that preforms this in a single here but can also
         // handle variable requests, maybe definining an enum with all the request types instead of a string would be helpful?
 
-        // open the scheme to get 'child_scheme' fd
-        let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("failed to open chld scheme");
+        // open the service's BaseScheme
+        let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open chld scheme");
         // dup into the pid scheme in order to read that data
         if let Ok(pid_scheme) = libredox::call::dup(child_scheme, b"pid") {
+            // now we can read the pid onto the buffer from it's subscheme
             let mut read_buffer: &mut [u8] = &mut [b'0'; 32];
             libredox::call::read(pid_scheme, read_buffer).expect("could not read pid");
             // process the buffer based on the request (pid)
@@ -49,7 +50,7 @@ fn main() {
                 pid_bytes[i] = read_buffer[i];
                 i += 1;
             }
-            // this last line would instead be something like let pid = getSvcAttr(service, "pid")
+            // this last line could instead be something like let pid = getSvcAttr(service, "pid")
             let pid = usize::from_ne_bytes(pid_bytes);
 
             service.pid = pid;
@@ -83,8 +84,6 @@ fn main() {
 
              once the services vector is updated use the information to start the list
             */
-            
-
             eval_cmd(&mut services, &mut sm_scheme); 
             // The following is for handling requests to the SM scheme
             // Redox does timers with the timer scheme according to docs https://doc.redox-os.org/book/event-scheme.html
@@ -210,7 +209,19 @@ fn eval_cmd(services: &mut BTreeMap<String, ServiceEntry>, sm_scheme: &mut SMSch
 
 fn test_service_data(service: &mut ServiceEntry) {
     warn!("testing service data!");
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("could not open child/service base scheme");
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("could not open child/service base scheme");
+    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+    
+    libredox::call::read(child_scheme, read_buffer).expect("could not read from child's main scheme");
+    let mut rand_bytes = [0; 8];
+    for mut i in 0..8 {
+        rand_bytes[i] = read_buffer[i];
+    }
+    
+    // get and print a random integer showing we can still read from gtrand's main scheme
+    let rand_int = i64::from_ne_bytes(rand_bytes);
+    info!("Read a random integer: {:#?}", rand_int);
+
     // set the request that we want and write it to the scheme
     let req = b"request_count";
     let time = b"time_stamp";
@@ -218,7 +229,6 @@ fn test_service_data(service: &mut ServiceEntry) {
 
     let time_scheme = libredox::call::dup(child_scheme, time).expect("could not dup time fd");
     // set up the read buffer and read from the scheme into it
-    let read_buffer: &mut [u8] = &mut [b'0'; 32];
     libredox::call::read(time_scheme, read_buffer).expect("could not read time response");
     // process the buffer based on the request
     let mut time_bytes = [0; 8];
@@ -260,7 +270,9 @@ fn test_service_data(service: &mut ServiceEntry) {
     info!("data string: {:#?}", data_string);
 
 
+
     libredox::call::close(time_scheme);
     libredox::call::close(reqs_scheme);
     libredox::call::close(message_scheme);
+    libredox::call::close(child_scheme);
 }

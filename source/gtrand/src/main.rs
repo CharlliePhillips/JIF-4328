@@ -103,8 +103,6 @@ impl OpenFileInfo {
     }
 }
 
-
-
 /// Struct to represent the rand scheme.
 struct RandScheme {
     prng: ChaCha20Rng,
