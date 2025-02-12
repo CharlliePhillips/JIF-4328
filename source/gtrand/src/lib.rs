@@ -19,11 +19,20 @@ type ManagmentSubScheme = Arc<Mutex<Box<dyn Scheme>>>;
 type SubSchemeGuard<'a> = MutexGuard<'a, Box<dyn Scheme>>;
 
 struct PidScheme(u64);
-struct RequestsScheme(u64, u64);
+struct RequestsScheme{
+    reads: u64, 
+    writes: u64,
+    opens: u64,
+    closes: u64,
+    dups: u64,
+}
 struct TimeStampScheme(i64);
 struct MessageScheme([u8;32]);
 // will hold a command enum?
-struct ControlScheme();
+struct ControlScheme{
+    stop: bool,
+    clear: bool,
+}
 
 pub struct BaseScheme {
     main_scheme: ManagmentSubScheme,
@@ -48,7 +57,14 @@ impl BaseScheme {
                     std::process::id().try_into().unwrap()
                 )))),
             requests_scheme: Arc::new(Mutex::new(Box::new(
-                RequestsScheme(13,42)
+                    RequestsScheme{
+                        // these should all actually start at 0 but setting values for clear function testing
+                        reads: 13,
+                        writes: 42,
+                        opens: 32,
+                        closes: 16,
+                        dups: 8,
+                    }
                 ))),
             time_stamp_scheme: Arc::new(Mutex::new(Box::new(
                 TimeStampScheme(
@@ -57,7 +73,8 @@ impl BaseScheme {
             message_scheme: Arc::new(Mutex::new(Box::new(
                 MessageScheme([0; 32])))),
             control_scheme: Arc::new(Mutex::new(Box::new(
-                ControlScheme()))),
+                    ControlScheme{stop: false, clear: false}
+                ))),
             handlers: HashMap::new(),
             next_mgmt_id: 9999.into(),
             managment: Managment::new(),
@@ -122,8 +139,12 @@ impl Scheme for BaseScheme {
 
                 // if there is nothing on the buffer then assume we want the main scheme
                 b"" => {
-                    self.main_scheme.lock().map_err(|err| Error::new(EBADF))?
-                    .dup(old_id, buf)
+                    let main_dup = self.main_scheme.lock()
+                    .map_err(|err| Error::new(EBADF))?
+                    .dup(old_id, buf)?;
+                    
+                    self.handlers.insert(main_dup, self.main_scheme.clone());
+                    Ok(main_dup)
                 }
 
                 // if there is something unknown on the buffer but we know the id then dup
@@ -154,6 +175,7 @@ impl Scheme for BaseScheme {
         self.handler(id)?.write(id, buffer, _offset, _flags)
     }
 
+    // TODO: unimplemented BaseScheme functions should pass to the main Scheme instead of just Oking
     fn fcntl(&mut self, _id: usize, _cmd: usize, _arg: usize) -> Result<usize> {
         Ok(0)
     }
@@ -218,8 +240,8 @@ impl Scheme for PidScheme {
 }
 impl Scheme for RequestsScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        let read_bytes = &self.0.to_ne_bytes();
-        let write_bytes = &self.1.to_ne_bytes();
+        let read_bytes = &self.reads.to_ne_bytes();
+        let write_bytes = &self.writes.to_ne_bytes();
         let mut request_count_bytes: [u8; 17] = [b'\0'; 17];
         request_count_bytes[8] = b',';
         for i in 0..8 {
@@ -269,10 +291,12 @@ pub struct Managment {
     response_buf: [u8; 32],
     // set to true when a request has been written and the scheme is waiting for the response to be read
     pub response_pending: bool,
+    // TODO ^^ probably don't need these anymore
     pid: usize,
     time_stamp: i64,
     message: [u8; 32],
     // [0] = read, [1] = write
+    // TODO: this should probably get split into 5 integers for read, write, open, close, and dup
     request_count: (u64, u64),
 
 }
