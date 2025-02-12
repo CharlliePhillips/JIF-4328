@@ -2,7 +2,8 @@ use libredox::{call::{open, read, write}, flag::*};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
-use std::{str, borrow::BorrowMut, collections::BTreeMap, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
+use std::{str, borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
+use hashbrown::HashMap;
 use scheme::SMScheme;
 use timer;
 use chrono::prelude::*;
@@ -24,7 +25,7 @@ fn main() {
     info!("service-monitor logger started");
     
     // make list of managed services
-    let mut services: BTreeMap<String, ServiceEntry> = read_registry();
+    let mut services: HashMap<String, ServiceEntry> = read_registry();
 
     // start dependencies
     for service in services.values_mut() {
@@ -120,7 +121,7 @@ fn main() {
 /// - stop: check if service is running, if it is then get pid and stop
 /// - start: check if service is running, if not build command from registry and start
 /// - list: get all pids from managed services and return them to CLI
-fn eval_cmd(services: &mut BTreeMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
+fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
     const CMD_STOP: u32 = 1;
     const CMD_START: u32 = 2;
     const CMD_LIST: u32 = 3;

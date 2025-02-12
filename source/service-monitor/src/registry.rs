@@ -1,5 +1,6 @@
 use serde::Deserialize;
-use std::{fs::File, io::Read, path::Path, collections::BTreeMap};
+use std::{fs::File, io::Read, path::Path};
+use hashbrown::HashMap;
 
 
 #[derive(Debug, Deserialize)]
@@ -29,7 +30,7 @@ struct Registry {
     service: Vec<Service>,
 }
 
-pub fn read_registry() -> BTreeMap<String, ServiceEntry> {
+pub fn read_registry() -> HashMap<String, ServiceEntry> {
     // TODO: determine filepath (where will registry.toml be located?)
     // ! This filepath is just a temporary solution
     let path: &Path = Path::new("/usr/share/smregistry.toml");
@@ -53,7 +54,7 @@ pub fn read_registry() -> BTreeMap<String, ServiceEntry> {
     // assert!(registry.service[0].depends.is_empty());
 
     // Sets up the services map for main.
-    let mut services: BTreeMap<String, ServiceEntry> = BTreeMap::new();
+    let mut services: HashMap<String, ServiceEntry> = HashMap::new();
     let registry: Registry = toml::from_str(&toml_str).expect("Unable to parse registry.toml");
     for s in registry.service {
         let new_entry = ServiceEntry {
