@@ -23,6 +23,7 @@ use syscall::{
 // Create an RNG Seed to create initial seed from the rdrand intel instruction
 use rand_core::SeedableRng;
 use sha2::{Digest, Sha256};
+//TODO: should be a hashbrown::HashMap
 use std::collections::BTreeMap;
 use std::num::Wrapping;
 use gtrand::BaseScheme;

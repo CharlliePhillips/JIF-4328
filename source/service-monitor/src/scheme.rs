@@ -20,7 +20,7 @@ use syscall::{error::*, MODE_CHR};
 pub struct SMScheme {
     pub cmd: u32, 
     pub arg1: String,
-    pub pid_buffer: Vec<u8>, //used in list, could be better as the BTreeMap from service-monitor later?
+    pub pid_buffer: Vec<u8>, 
 }
 
 impl Scheme for SMScheme {

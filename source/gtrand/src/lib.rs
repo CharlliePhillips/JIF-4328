@@ -6,7 +6,7 @@ use syscall::{
     Error, Result, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC, O_CREAT,
     O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY, SchemeMut
 };
-use std::collections::BTreeMap;
+use hashbrown::HashMap;
 use std::num::Wrapping;
 use std::sync::*;
 use std::sync::atomic::AtomicUsize;
@@ -34,7 +34,7 @@ pub struct BaseScheme {
     control_scheme: ManagmentSubScheme,
     // handlers holds a map of the file descriptors/id to
     // the actual scheme object
-    handlers: BTreeMap<usize, ManagmentSubScheme>,
+    handlers: HashMap<usize, ManagmentSubScheme>,
     next_mgmt_id: AtomicUsize,
     managment: Managment,
 }
@@ -58,7 +58,7 @@ impl BaseScheme {
                 MessageScheme([0; 32])))),
             control_scheme: Arc::new(Mutex::new(Box::new(
                 ControlScheme()))),
-            handlers: BTreeMap::new(),
+            handlers: HashMap::new(),
             next_mgmt_id: 9999.into(),
             managment: Managment::new(),
         }
@@ -81,9 +81,9 @@ impl Scheme for BaseScheme {
         let open_res = main_lock.xopen(path, flags, caller); 
         // if we successfully open the main scheme and get ThisScheme{id,flags} then add a
         // new ManagmentSubScheme to the list of handlers with that id.
-        if Ok(OpenResult::ThisScheme{number, flags}) = open_res {
+        if let Ok(OpenResult::ThisScheme{number, flags}) = open_res {
             self.handlers.insert(number, self.main_scheme.clone());
-            Ok(OpenResult::ThisScheme{number, flags})
+            open_res
         } else {
             // otherwise propogate the result
             open_res
@@ -129,9 +129,11 @@ impl Scheme for BaseScheme {
                 // if there is something unknown on the buffer but we know the id then dup
                 // the given id.
                 _ => {
-                    if let handler = self.handlers.get(&old_id).ok_or(Error::new(EBADF))? {
+                    if let scheme = self.handlers.get(&old_id).ok_or(Error::new(EBADF))? {
+                        let mut handler = self.handler(old_id)?;
                         let new_id = handler.dup(old_id, buf)?;
-                        self.handlers.insert(new_id, handler.clone());
+                        drop(handler);
+                        self.handlers.insert(new_id, scheme.clone());
                         Ok(new_id)
                     } else {
                         // we have already checked for the key so this should never run
