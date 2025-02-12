@@ -275,9 +275,8 @@ impl Scheme for RandScheme {
         // Check fd and permissions
         self.can_perform_op_on_fd(file, MODE_READ)?;
         
-        // check the managment struct to see if a response is pending
-            // if we have a response waiting then the buffer should have that data
-            // Setting the stream will ensure that if two clients are reading concurrently, they won't get the same numbers
+
+        // Setting the stream will ensure that if two clients are reading concurrently, they won't get the same numbers
         self.prng.set_stream(file as u64); // Should probably find a way to re-instate the counter for this stream, but
                                            // not doing so won't make the output any less 'random'
         self.prng.fill_bytes(buf);
@@ -295,8 +294,6 @@ impl Scheme for RandScheme {
         // we'll take 512 bits (arbitrary) from the current PRNG, and seed with that
         // and the supplied data.
         
-        // this handler returns true if a valid request was passed on the buffer
-        // in this case we don't want to run the service's code on the request
         let mut rng_buf: [u8; SEED_BYTES] = [0; SEED_BYTES];
         self.prng.fill_bytes(&mut rng_buf);
         let mut rng_vec = Vec::new();
