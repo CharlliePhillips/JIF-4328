@@ -176,29 +176,40 @@ impl Scheme for BaseScheme {
     }
 
     // TODO: unimplemented BaseScheme functions should pass to the main Scheme instead of just Oking
-    fn fcntl(&mut self, _id: usize, _cmd: usize, _arg: usize) -> Result<usize> {
-        Ok(0)
-    }
-    fn fsize(&mut self, _id: usize) -> Result<u64> {
-        Ok(0)
-    }
-
-    fn ftruncate(&mut self, _id: usize, _len: usize) -> Result<usize> {
-        Ok(0)
+    fn fcntl(&mut self, id: usize, cmd: usize, arg: usize) -> Result<usize> {
+        let mut main = self.main_scheme.lock()
+        .map_err(|err| Error::new(EBADF))?;
+                    
+        main.fcntl(id, cmd, arg)
     }
 
-    fn fpath(&mut self, _id: usize, buf: &mut [u8]) -> Result<usize> {
-        let mut i = 0;
-        let scheme_path = b"gtrand";
-        while i < buf.len() && i < scheme_path.len() {
-            buf[i] = scheme_path[i];
-            i += 1;
-        }
-        Ok(i)
+    fn fsize(&mut self, id: usize) -> Result<u64> {
+        let mut main = self.main_scheme.lock()
+        .map_err(|err| Error::new(EBADF))?;
+                    
+        main.fsize(id)
     }
 
-    fn fsync(&mut self, _file: usize) -> Result<usize> {
-        Ok(0)
+    fn ftruncate(&mut self, id: usize, len: usize) -> Result<usize> {
+        let mut main = self.main_scheme.lock()
+        .map_err(|err| Error::new(EBADF))?;
+                    
+        main.ftruncate(id, len)
+    }
+
+    
+    fn fpath(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
+        let mut main = self.main_scheme.lock()
+        .map_err(|err| Error::new(EBADF))?;
+                    
+        main.fpath(id, buf)
+    }
+
+    fn fsync(&mut self, id: usize) -> Result<usize> {
+        let mut main = self.main_scheme.lock()
+        .map_err(|err| Error::new(EBADF))?;
+                    
+        main.fsync(id)
     }
 
     fn close(&mut self, id: usize) -> Result<usize> {
@@ -218,14 +229,11 @@ impl Scheme for BaseScheme {
         }
     }
 
-    fn fstat(&mut self, _: usize, stat: &mut syscall::Stat) -> Result<usize> {
-        stat.st_mode = 0o666 | MODE_CHR;
-        stat.st_size = 0;
-        stat.st_blocks = 0;
-        stat.st_blksize = 4096;
-        stat.st_nlink = 1;
-
-        Ok(0)
+    fn fstat(&mut self, id: usize, stat: &mut syscall::Stat) -> Result<usize> {
+        let mut main = self.main_scheme.lock()
+        .map_err(|err| Error::new(EBADF))?;
+                    
+        main.fstat(id, stat)
     }
 }
 
@@ -323,86 +331,6 @@ impl Managment {
         }
         for i in 0..message_len {
             self.message[i] = message.as_bytes()[i];
-        }
-    }
-
-    // match the request on the buffer to 
-    pub fn handle_sm_request(&mut self, buf: &[u8]) -> bool {
-        self.response_pending = true;
-        match buf {
-            b"pid" => {
-                self.pid();
-            }
-            b"time_stamp" => {
-                self.time_stamp();
-            } 
-
-            b"message" => {
-                self.message();
-            }
-
-            b"request_count" => {
-                self.request_count();
-            }
-            _ => {
-                self.response_pending = false;
-            }
-        }
-        self.response_pending
-    }
-
-    // copy the managment bytes to a buffer
-    pub fn fill_buffer(&mut self, buf: &mut [u8]) {
-        let mut i = 0;
-        for b in self.response_buf {
-            buf[i] = b;
-            i += 1;
-        }
-        self.response_pending = false;
-    }
-
-    // moves pid into our bytes for the managment struct
-    fn pid(&mut self) {
-        let mut i = 0;
-        println!("pid bytes: {:#?}", self.pid.to_ne_bytes());
-        for b in self.pid.to_ne_bytes() {
-            self.response_buf[i] = b;
-            i += 1;
-        }
-    }
-
-    fn time_stamp(&mut self) {
-        let mut i = 0;
-        println!("time stamp bytes: {:#?}", self.time_stamp.to_ne_bytes());
-        for b in self.time_stamp.to_ne_bytes() {
-            self.response_buf[i] = b;
-            i += 1;
-        }   
-    }
-
-    fn message(&mut self) {
-        let mut i = 0;
-        println!("message bytes: {:#?}", self.message);
-        for b in self.message {
-            self.response_buf[i] = b;
-            i += 1;
-        }
-    }
-
-    fn request_count(&mut self) {
-        let mut i = 0;
-        println!("read count bytes: {:#?}", self.request_count.0.to_ne_bytes());
-        for b in self.request_count.0.to_ne_bytes() {
-            self.response_buf[i] = b;
-            i += 1;
-        }
-        // add a comma for the tuple
-        self.response_buf[i] = b',';
-        i += 1;
-        println!("write count bytes: {:#?}", self.request_count.1.to_ne_bytes());
-        for b in self.request_count.1.to_ne_bytes() {
-            self.response_buf[i] = b;
-            i += 1;
         }
     }
 }

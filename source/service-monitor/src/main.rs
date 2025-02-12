@@ -270,8 +270,14 @@ fn test_service_data(service: &mut ServiceEntry) {
     data_string.retain(|c| c != '\0');
     info!("data string: {:#?}", data_string);
 
+    // lets mess around and test one of the other main scheme methods
+    // if neither panics it can be assumed the main scheme (child_scheme) got both
 
-
+    // this works
+    let Ok(child_size) = libredox::call::fstat(child_scheme) else {panic!()};
+    // this does not, the main scheme checks the id
+    //let Ok(time_size) = libredox::call::fstat(time_scheme) else {panic!()};
+    
     libredox::call::close(time_scheme);
     libredox::call::close(reqs_scheme);
     libredox::call::close(message_scheme);
