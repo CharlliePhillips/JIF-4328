@@ -222,13 +222,15 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
     - While the Services Manager is running a user can manually add a service by entering the `services register` command. 
 
 - Format 
-    - The `registry.toml` stores the commands and arguments to start a service in a .toml file. Each service should have (e.g.)  
-    - A service heading 
-    - Name 
-    - Type - You could specify for a service to be ignored by the SM (i.e. using SM as init) by setting the Type to “application”. 
-    - Starting Arguments 
-    - Manual Override – If you enter custom data into the registry.toml and do not want the Service Monitor to potentially override it then this should be set to true. Otherwise risk this information being “corrected” 
-    - Depends – A list of named dependencies, this list is used to build dependency tree(s) 
+    - The `registry.toml` stores the commands and arguments to start a service in a .toml file. Each service should have:  
+      - A service heading 
+      - Name 
+      - Type - You could specify for a service to be ignored by the SM (i.e. using SM as init) by setting the Type to “application”. 
+      - Starting Arguments 
+      - Manual Override – If you enter custom data into the registry.toml and do not want the Service Monitor to potentially override it then this should be set to true. Otherwise risk this information being “corrected” 
+      - Depends – A list of named dependencies, this list is used to build dependency tree(s)
+      - Scheme Path – path to the scheme associated with the service
+    - In addition, a default `running` state of false and `pid` of 0 is assigned to the service when it is read into the manager, which is updated later on.
 
 Example: 
 ```toml
@@ -287,5 +289,5 @@ Depends = []
 - Implement a "discovery" protocol that adds devices discovered during boot? 
 - When the ‘start’ command is used from the CLI should nothing be done if missing dependencies? Or should those be started automatically? 
 - Which daemons need what information from the Kernel, what syscall? 
-- What happens when a service is not responding that has dependent services still running?s 
+- What happens when a service is not responding that has dependent services still running? 
 - How do permissions/security on the API work? 
