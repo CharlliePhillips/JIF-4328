@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+service-base = { path = "../service-base" }
 rand_chacha = "0.2"
 rand_core = "0.5"
 redox-daemon = "0.1.2"

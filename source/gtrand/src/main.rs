@@ -26,7 +26,8 @@ use sha2::{Digest, Sha256};
 //TODO: should be a hashbrown::HashMap
 use std::collections::BTreeMap;
 use std::num::Wrapping;
-use gtrand::BaseScheme;
+// new lib service_base
+use service_base::BaseScheme;
 use std::sync::*;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
