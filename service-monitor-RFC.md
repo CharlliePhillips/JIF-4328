@@ -72,7 +72,7 @@ A separate program with the name “services” will parse the arguments passed 
             ```
             - Review “APIs and message flows” for specifics on how to implement this 
  3. **services clear <daemon_name>:**
-Clear short-term stats for <daemon_name>. 
+- Clear short-term stats for <daemon_name>. 
     - A user could clear short term stats and monitor for unusual changes (say a process is not using io when it normally should) This change in short term info can then be used to determine issues with the daemon A similar flow will be implemented as an automated part of the service manager. 
         - Requests count – Total requests are still recorded by Service Manager 
         - Message – Set service’s message to placeholder “Message Cleared” 

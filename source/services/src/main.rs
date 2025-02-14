@@ -29,6 +29,13 @@ fn main() {
 
         }
 
+        "clear" => {
+            let arg2 = std::env::args().nth(2).expect("no arg2 given");
+            for b in format!(" {};", arg2).as_bytes() {
+                cmd_buf.push(*b);
+            }
+        }
+
         _ => {
             println!("invalid arguments arg1: {:?}", arg1);
             return;

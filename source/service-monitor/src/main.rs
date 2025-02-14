@@ -212,7 +212,10 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 info!("Clearing short-term stats for '{}'", service.name);
                 clear(service);
             }
-        }
+
+            sm_scheme.cmd = 0;
+            sm_scheme.arg1 = "".to_string();
+        },
         _ => {}
     }
 }

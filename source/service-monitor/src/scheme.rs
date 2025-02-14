@@ -94,7 +94,7 @@ impl Scheme for SMScheme {
                 r = 3;
             }
 
-            b"start" => {
+            b"clear" => {
                 self.cmd = 4;
                 let mut idx: usize = 6;
                 while(buffer[idx] != b';') {
