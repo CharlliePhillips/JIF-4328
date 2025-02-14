@@ -2,6 +2,7 @@
 members = [
     "service-monitor",
     "services",
+    "service-base",
     "gtrand",
     "gtrand2"
 ]
