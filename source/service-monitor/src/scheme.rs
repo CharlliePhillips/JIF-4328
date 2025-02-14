@@ -95,13 +95,13 @@ impl Scheme for SMScheme {
             }
 
             b"start" => {
-                self.cmd = 2;
+                self.cmd = 4;
                 let mut idx: usize = 6;
                 while(buffer[idx] != b';') {
                     self.arg1.push(buffer[idx] as char);
                     idx += 1;
                 }
-                r = 2;
+                r = 4;
             }
 
             _ => {
