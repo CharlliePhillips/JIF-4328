@@ -2,7 +2,7 @@ use std::os::fd;
 use std::{borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Command, Stdio}};
 use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
 use log::info;
-use redox_scheme::SchemeMut;
+use redox_scheme::Scheme;
 use syscall::{error::*, MODE_CHR};
 
 //use std::fs::File;
@@ -20,10 +20,10 @@ use syscall::{error::*, MODE_CHR};
 pub struct SMScheme {
     pub cmd: u32, 
     pub arg1: String,
-    pub pid_buffer: Vec<u8>, //used in list, could be better as the BTreeMap from service-monitor later?
+    pub pid_buffer: Vec<u8>, 
 }
 
-impl SchemeMut for SMScheme {
+impl Scheme for SMScheme {
 
     fn open(&mut self, _path: &str, _flags: usize, _uid: u32, _gid: u32) -> Result<usize> {
         Ok(0)

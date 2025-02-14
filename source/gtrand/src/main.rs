@@ -13,19 +13,25 @@ pub const MODE_READ: u16 = 0o4;
 #[cfg(target_arch = "x86_64")]
 use raw_cpuid::CpuId;
 
-use redox_scheme::{RequestKind, SchemeMut, SignalBehavior, Socket, V2};
+use redox_scheme::{RequestKind, Scheme, SignalBehavior, Socket, CallerCtx, OpenResult};
 use syscall::data::Stat;
 use syscall::flag::EventFlags;
 use syscall::{
     Error, Result, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC, O_CREAT,
-    O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY,
+    O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY, SchemeMut
 };
-
 // Create an RNG Seed to create initial seed from the rdrand intel instruction
 use rand_core::SeedableRng;
 use sha2::{Digest, Sha256};
+//TODO: should be a hashbrown::HashMap
 use std::collections::BTreeMap;
 use std::num::Wrapping;
+use gtrand::BaseScheme;
+use std::sync::*;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use chrono::Local;
+use std::ops::Deref;        
 
 // This Daemon implements a Cryptographically Secure Random Number Generator
 // that does not block on read - i.e. it is equivalent to linux /dev/urandom
@@ -100,7 +106,6 @@ impl OpenFileInfo {
 
 /// Struct to represent the rand scheme.
 struct RandScheme {
-    socket: Socket,
     prng: ChaCha20Rng,
     // ChaCha20 is a Cryptographically Secure PRNG
     // https://docs.rs/rand/0.5.0/rand/prng/chacha/struct.ChaChaRng.html
@@ -111,14 +116,12 @@ struct RandScheme {
     // Trying to create a HashMap causes a system crash.
     // <file number, information about the open file>
     next_fd: Wrapping<usize>,
-    pid: usize,
 }
 
 impl RandScheme {
     /// Create new rand scheme from a message socket
-    fn new(socket: Socket) -> RandScheme {
+    fn new() -> RandScheme {
         RandScheme {
-            socket,
             prng: ChaCha20Rng::from_seed(create_rdrand_seed()),
             prng_stat: Stat {
                 st_mode: MODE_CHR | DEFAULT_PRNG_MODE,
@@ -128,7 +131,6 @@ impl RandScheme {
             },
             open_descriptors: BTreeMap::new(),
             next_fd: Wrapping(0),
-            pid: 0,
         }
     }
 
@@ -225,7 +227,7 @@ fn test_scheme_perms() {
     assert!(scheme.close(fd).is_ok());
 }
 
-impl SchemeMut for RandScheme {
+impl Scheme for RandScheme {
     fn open(&mut self, path: &str, flags: usize, uid: u32, gid: u32) -> Result<usize> {
         // We are only allowing
         // reads/writes from rand:/ and rand:/urandom - the root directory on its own is passed as an empty slice
@@ -272,12 +274,12 @@ impl SchemeMut for RandScheme {
     fn read(&mut self, file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // Check fd and permissions
         self.can_perform_op_on_fd(file, MODE_READ)?;
+        
 
         // Setting the stream will ensure that if two clients are reading concurrently, they won't get the same numbers
         self.prng.set_stream(file as u64); // Should probably find a way to re-instate the counter for this stream, but
                                            // not doing so won't make the output any less 'random'
         self.prng.fill_bytes(buf);
-
         Ok(buf.len())
     }
 
@@ -291,9 +293,7 @@ impl SchemeMut for RandScheme {
         // that as the resulting numbers would be predictable based on this input
         // we'll take 512 bits (arbitrary) from the current PRNG, and seed with that
         // and the supplied data.
-        if buf == b"pid" {
-            return Ok(self.pid);
-        }
+        
         let mut rng_buf: [u8; SEED_BYTES] = [0; SEED_BYTES];
         self.prng.fill_bytes(&mut rng_buf);
         let mut rng_vec = Vec::new();
@@ -301,6 +301,7 @@ impl SchemeMut for RandScheme {
         rng_vec.extend(buf);
         self.reseed_prng(&rng_vec);
         Ok(buf.len())
+
     }
 
     fn fchmod(&mut self, file: usize, mode: u16) -> Result<usize> {
@@ -365,27 +366,26 @@ impl SchemeMut for RandScheme {
 }
 
 fn daemon(daemon: redox_daemon::Daemon) -> ! {
-    let socket = Socket::<V2>::create("gtrand").expect("randd: failed to create rand scheme");
+    let socket = Socket::create("gtrand").expect("randd: failed to create rand scheme");
 
-    let mut scheme = RandScheme::new(socket);
-    scheme.pid = std::process::id().try_into().unwrap();
+    let randscheme = RandScheme::new();
+    let mut scheme = BaseScheme::new(randscheme);
     daemon
         .ready()
         .expect("randd: failed to mark daemon as ready");
 
     libredox::call::setrens(0, 0).expect("randd: failed to enter null namespace");
+    //scheme.managment.start_managment("started gtrand!");
 
-    while let Some(request) = scheme
-        .socket
+    while let Some(request) = socket
         .next_request(SignalBehavior::Restart)
         .expect("error reading packet")
     {
         let RequestKind::Call(call) = request.kind() else {
             continue;
         };
-        let response = call.handle_scheme_mut(&mut scheme);
-        scheme
-            .socket
+        let response = call.handle_scheme(&mut scheme);
+            socket
             .write_responses(&[response], SignalBehavior::Restart)
             .expect("error writing packet");
     }
@@ -396,3 +396,4 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
 fn main() {
     redox_daemon::Daemon::new(daemon).expect("randd: failed to daemonize");
 }
+
