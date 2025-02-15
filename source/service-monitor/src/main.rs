@@ -180,8 +180,10 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 } else {
                     warn!("service: '{}' is already running", service.name);
                     test_service_data(service);
-                    clear(service);
-                    test_service_data(service);
+
+                    // When we actually report the total number of reads/writes, it should actually be the total added
+                    // to whatever the current value in the service is, the toal stored in the service monitor is
+                    // updated when the service's count is cleared.
                     info!("total reads: {}, total writes: {}", service.total_reads, service.total_writes);
                 }
             } else {
