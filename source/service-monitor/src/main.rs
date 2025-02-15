@@ -125,6 +125,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     const CMD_STOP: u32 = 1;
     const CMD_START: u32 = 2;
     const CMD_LIST: u32 = 3;
+    const CMD_INFO: u32 = 4;
 
     match sm_scheme.cmd {
         CMD_STOP => {
@@ -202,6 +203,22 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             }
             //info!("PIDs as bytes: {:?}", bytes);
             sm_scheme.pid_buffer = bytes;
+        },
+        CMD_INFO => { // works the same as stop right now, for testing!
+            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+                if service.running {
+                    info!("trying to kill pid {}", service.pid);
+                    let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
+                    service.running = false;
+                } else {
+                    warn!("stop failed: {} was already stopped", service.name);
+                }
+            } else {
+                warn!("stop failed: no service named '{}'", sm_scheme.arg1);
+            }
+            //reset the current command value
+            sm_scheme.cmd = 0;
+            sm_scheme.arg1 = "".to_string();
         },
         _ => {}
     }
