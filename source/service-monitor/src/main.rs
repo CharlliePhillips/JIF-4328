@@ -207,14 +207,36 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         CMD_INFO => { // works the same as stop right now, for testing!
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                 if service.running {
-                    info!("trying to kill pid {}", service.pid);
-                    let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
-                    service.running = false;
+                    info!("found service: {}, grabbing info now", service.name);
+
+                    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
+                    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+
+                    let message = b"message";
+
+
+                    let message_scheme = libredox::call::dup(child_scheme, message).expect("could not dup message fd");
+                    libredox::call::read(message_scheme, read_buffer);
+
+
+                    // sending it to the log via string
+                    let mut data_string = match str::from_utf8(&read_buffer){
+                        Ok(data) => data,
+                        Err(e) => "<data not a valid string>"
+                    }.to_string();
+                    // change trailing 0 chars into empty string
+                    data_string.retain(|c| c != '\0');
+                    info!("data string: {:#?}", data_string);
+
+                    // close the schemes
+                    libredox::call::close(message_scheme);
+                    libredox::call::close(child_scheme);
+
                 } else {
-                    warn!("stop failed: {} was already stopped", service.name);
+                    warn!("info failed: {} is not running", service.name);
                 }
             } else {
-                warn!("stop failed: no service named '{}'", sm_scheme.arg1);
+                warn!("info failed: no service named '{}'", sm_scheme.arg1);
             }
             //reset the current command value
             sm_scheme.cmd = 0;
