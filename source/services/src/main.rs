@@ -61,7 +61,12 @@ fn main() {
                 u32::from_ne_bytes(array) as usize
             }).collect();
             println!("PIDs: {:?}", pids);
-        }
+        },
+
+        //special case for info
+        4 => {
+            println!("special testing case for info! from services/main.rs");
+        },
 
 
         _ => println!("write command returned value: {success:#?}")
