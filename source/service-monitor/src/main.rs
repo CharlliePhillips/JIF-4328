@@ -123,8 +123,8 @@ fn main() {
 /// - list: get all pids from managed services and return them to CLI
 fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
     match &sm_scheme.cmd {
-        Some(Cmd::Stop(arg1)) => {
-            if let Some(service) = services.get_mut(arg1) {
+        Some(Cmd::Stop(service_name)) => {
+            if let Some(service) = services.get_mut(service_name) {
                 if service.running {
                     info!("trying to kill pid {}", service.pid);
                     let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
@@ -133,13 +133,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     warn!("stop failed: {} was already stopped", service.name);
                 }
             } else {
-                warn!("stop failed: no service named '{}'", arg1);
+                warn!("stop failed: no service named '{}'", service_name);
             }
             //reset the current command value
             sm_scheme.cmd = None;
         },
-        Some(Cmd::Start(arg1)) => {
-            if let Some(service) = services.get_mut(arg1) {
+        Some(Cmd::Start(service_name)) => {
+            if let Some(service) = services.get_mut(service_name) {
                 // can add args here later with '.arg()'
                 if (!service.running) {
                     match std::process::Command::new(service.name.as_str()).spawn() {
@@ -176,7 +176,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     test_service_data(service);
                 }
             } else {
-                warn!("start failed: no service named '{}'", arg1);
+                warn!("start failed: no service named '{}'", service_name);
             }
             //reset the current command value
             sm_scheme.cmd = None;
