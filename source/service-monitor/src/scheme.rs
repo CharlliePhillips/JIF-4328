@@ -20,6 +20,7 @@ use syscall::{error::*, MODE_CHR};
 pub struct SMScheme {
     pub cmd: u32, 
     pub arg1: String,
+    pub arg2: String,
     pub pid_buffer: Vec<u8>, 
 }
 
@@ -38,26 +39,26 @@ impl Scheme for SMScheme {
     }
 
     fn read(&mut self, _file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        //if self.cmd == 3 {
-        //  for each 8 bytes in buf:
-        //      buf[8 bytes] = pid; (usize = 64 bits or 8 bytes)
-        //  Ok(buf.length())
-        //}
-        // in services/main.rs smth like
-        // Ok(buffer_size) = read(sm_fd, pid_buffer)
-        // for each 8 bytes in pid_buffer print as usize;
-        //Ok(0)
-
-        //info!("Read called with cmd: {}", self.cmd);
         if self.cmd == 3 {
-            let size = std::cmp::min(buf.len(), self.pid_buffer.len());
-            buf[..size].copy_from_slice(&self.pid_buffer[..size]);
-            info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
-            self.cmd = 0; //unlike the other commands, needs to fix cmd here instead of in main
-            Ok(size)
+            if buf.len() >= 4 {
+                let size = std::cmp::min(buf.len(), self.pid_buffer.len());
+                buf[..size].copy_from_slice(&self.pid_buffer[..size]);
+                info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
+                
+                if !self.arg2.is_empty() {
+                    let arg2_bytes = self.arg2.as_bytes();
+                    buf[size.. size + arg2_bytes.len()].copy_from_slice(&arg2_bytes[0..]);
+                    info!("Appended arg2 to buffer: {}", self.arg2);
+                }
+                
+                self.cmd = 0; //unlike the other commands, needs to fix cmd here instead of in main
+                Ok(size)
+            } else {
+                return Err(Error::new(EINVAL));
+            }
         } else {
             Ok(0)
-        } 
+        }
     }
 
 
@@ -91,6 +92,12 @@ impl Scheme for SMScheme {
 
             b"list " => {
                 self.cmd = 3;
+                let mut idx: usize = 5;
+                self.arg2 = "".to_string();
+                while(buffer[idx] != b';') {
+                    self.arg2.push(buffer[idx] as char);
+                    idx += 1;
+                }
                 r = 3;
             }
 

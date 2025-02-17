@@ -35,10 +35,10 @@ fn main() {
         service.running = true;
         
         // SCRUM-39 TODO: this block should be turned into a new function that preforms this in a single here but can also
-        // handle variable requests, maybe definining an enum with all the request types instead of a string would be helpful?
+        // handle variable requests, maybe defining an enum with all the request types instead of a string would be helpful?
 
         // open the service's BaseScheme
-        let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open chld scheme");
+        let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open child scheme");
         // dup into the pid scheme in order to read that data
         if let Ok(pid_scheme) = libredox::call::dup(child_scheme, b"pid") {
             // now we can read the pid onto the buffer from it's subscheme
@@ -70,6 +70,7 @@ fn main() {
         let mut sm_scheme = SMScheme{
             cmd: 0,
             arg1: String::from(""),
+            arg2: String::from(""),
             pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
         };
         
