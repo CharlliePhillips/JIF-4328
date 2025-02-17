@@ -68,7 +68,7 @@ impl Scheme for SMScheme {
 
         match &buffer[0..5] {
             b"stop " => {
-                let mut arg1: String;
+                let mut arg1: String = String::from("");
                 let mut idx: usize = 5;
                 while(buffer[idx] != b';') {
                     arg1.push(buffer[idx] as char);
@@ -80,7 +80,7 @@ impl Scheme for SMScheme {
             }
 
             b"start" => {
-                let mut arg1: String;
+                let mut arg1: String = String::from("");
                 let mut idx: usize = 6;
                 while(buffer[idx] != b';') {
                     arg1.push(buffer[idx] as char);
