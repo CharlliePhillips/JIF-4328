@@ -223,56 +223,10 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 if service.running {
                     info!("found service: {}, grabbing info now", service.name);
 
-                    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
-                    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+                    update_info(service, sm_scheme);
 
-                    let req = b"request_count";
-                    let time = b"time_stamp";
-                    let message = b"message";
-
-
-                    let message_scheme = libredox::call::dup(child_scheme, message).expect("could not dup message fd");
-                    libredox::call::read(message_scheme, read_buffer);
-                    // grab the string
-                    let mut message_string = match str::from_utf8(&read_buffer){
-                        Ok(data) => data,
-                        Err(e) => "<data not a valid string>"
-                    }.to_string();
-                    // change trailing 0 chars into empty string
-                    message_string.retain(|c| c != '\0');
-                    //info!("~sm found a data string: {:#?}", message_string);
-
-                    // get and print r/w tuple assume if there is a comma char at index 8 of the read
-                    // bytes then assume bytes 0-7 = tuple.0 and 9-16 are tuple.1
-                    let reqs_scheme = libredox::call::dup(child_scheme, req).expect("could not dup reqs fd");
-                    libredox::call::read(reqs_scheme, read_buffer);
-                    let mut read_int: i64 = 0;
-                    let mut write_int: i64 = 0;
-                    if read_buffer[8] == b',' {
-                        let mut first_int_bytes = [0; 8];
-                        let mut second_int_bytes = [0; 8];
-                        for mut i in 0..8 {
-                            first_int_bytes[i] = read_buffer[i];
-                            second_int_bytes[i] = read_buffer[i + 9];
-                        }
-                        read_int = i64::from_ne_bytes(first_int_bytes);
-                        write_int = i64::from_ne_bytes(second_int_bytes);
-                        //info!("~sm read requests: {:#?}", read_int);
-                        //info!("~sm write requests: {:#?}", write_int);
-                    }
-
-                    let time_scheme = libredox::call::dup(child_scheme, time).expect("could not dup time fd");
-                    // set up the read buffer and read from the scheme into it
-                    libredox::call::read(time_scheme, read_buffer).expect("could not read time response");
-                    // process the buffer based on the request
-                    let mut time_bytes = [0; 8];
-                    for mut i in 0..8 {
-                        time_bytes[i] = read_buffer[i];
-                    }
-
-                    // get the start time
-                    let time_init_int = i64::from_ne_bytes(time_bytes);
-                    let time_init = Local.timestamp_opt(time_init_int, 0).unwrap();
+                    // set up time strings
+                    let time_init = Local.timestamp_opt(service.time_init, 0).unwrap();
                     // get the current time
                     let current_time = Local::now();
                     // get the duration between the two
@@ -284,7 +238,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
                     let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
 
-                    info!("~sm time started registered versus time initialized: {}, {}", service.time_started, time_init_int);
+                    info!("~sm time started registered versus time initialized: {}, {}", service.time_started, service.time_init);
                     let time_started = Local.timestamp_opt(service.time_started, 0).unwrap();
                     let init_duration = time_init.signed_duration_since(time_started);
                     let init_minutes = init_duration.num_minutes();
@@ -296,17 +250,12 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 
                     let mut info_string = format!(
                     "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nScheme size: {} \nError count: {} \nMessage: \"{}\" ", 
-                    service.name, uptime_string, time_init_string, read_int, write_int, 0, 0, message_string);
+                    service.name, uptime_string, time_init_string, service.read_count, service.write_count, service.scheme_size, service.error_count, service.message);
                     //info!("~sm info string: {:#?}", info_string);
 
                     // set the info buffer to the formatted info string
                     sm_scheme.info_buffer = info_string.as_bytes().to_vec();
 
-                    // close the schemes
-                    libredox::call::close(time_scheme);
-                    libredox::call::close(reqs_scheme);
-                    libredox::call::close(message_scheme);
-                    libredox::call::close(child_scheme);
 
                 } else {
                     // it should not fail to provide info, so this will need to be changed later
@@ -322,6 +271,74 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         },
         _ => {}
     }
+}
+
+fn update_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
+    info!("updating information for: {}", service.name);
+
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
+    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+
+    let req = b"request_count";
+    let time = b"time_stamp";
+    let message = b"message";
+
+
+    let message_scheme = libredox::call::dup(child_scheme, message).expect("could not dup message fd");
+    libredox::call::read(message_scheme, read_buffer);
+    // grab the string
+    let mut message_string = match str::from_utf8(&read_buffer){
+        Ok(data) => data,
+        Err(e) => "<data not a valid string>"
+    }.to_string();
+    // change trailing 0 chars into empty string
+    message_string.retain(|c| c != '\0');
+    //info!("~sm found a data string: {:#?}", message_string);
+    service.message = message_string;
+
+    // get and print r/w tuple assume if there is a comma char at index 8 of the read
+    // bytes then assume bytes 0-7 = tuple.0 and 9-16 are tuple.1
+    let reqs_scheme = libredox::call::dup(child_scheme, req).expect("could not dup reqs fd");
+    libredox::call::read(reqs_scheme, read_buffer);
+    let mut read_int: i64 = 0;
+    let mut write_int: i64 = 0;
+    if read_buffer[8] == b',' {
+        let mut first_int_bytes = [0; 8];
+        let mut second_int_bytes = [0; 8];
+        for mut i in 0..8 {
+            first_int_bytes[i] = read_buffer[i];
+            second_int_bytes[i] = read_buffer[i + 9];
+        }
+        read_int = i64::from_ne_bytes(first_int_bytes);
+        write_int = i64::from_ne_bytes(second_int_bytes);
+        //info!("~sm read requests: {:#?}", read_int);
+        //info!("~sm write requests: {:#?}", write_int);
+    }
+    service.read_count = read_int;
+    service.write_count = write_int;
+
+    let time_scheme = libredox::call::dup(child_scheme, time).expect("could not dup time fd");
+    // set up the read buffer and read from the scheme into it
+    libredox::call::read(time_scheme, read_buffer).expect("could not read time response");
+    // process the buffer based on the request
+    let mut time_bytes = [0; 8];
+    for mut i in 0..8 {
+        time_bytes[i] = read_buffer[i];
+    }
+
+    // get the start time
+    let time_init_int = i64::from_ne_bytes(time_bytes);
+    service.time_init = time_init_int;
+
+    // get the scheme size?
+    let Ok(child_size) = libredox::call::fstat(child_scheme) else {panic!()};
+    service.scheme_size = child_size.st_size;
+
+    // close the schemes
+    libredox::call::close(time_scheme);
+    libredox::call::close(reqs_scheme);
+    libredox::call::close(message_scheme);
+    libredox::call::close(child_scheme);
 }
 
 
