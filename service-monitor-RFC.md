@@ -33,6 +33,15 @@ A separate program with the name “services” will parse the arguments passed 
 1. **services list:**
     - lists all registered daemons, their current status/message string, pid, and uptime. 
     - How to list running vs not running services? 
+    should show something kinda like this in the CLI:
+```
+name | pid | uptime | message
+
+gtrand | 85 | 3m 40s | “gtrand message: <random no>”
+
+also look at ‘ps’ command for inspo
+```
+
 
 2. **services info <daemon_name>:** 
     - list the current status, info, and uptime for <daemon_name>  
