@@ -239,8 +239,8 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 
                     // set up the info string
                     let mut info_string = format!(
-                    "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nScheme size: {} \nError count: {} \nMessage: \"{}\" ", 
-                    service.name, uptime_string, time_init_string, service.read_count, service.write_count, service.scheme_size, service.error_count, service.message);
+                    "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nError count: {} \nMessage: \"{}\" ", 
+                    service.name, uptime_string, time_init_string, service.read_count, service.write_count, service.error_count, service.message);
                     //info!("~sm info string: {:#?}", info_string);
 
                     // set the info buffer to the formatted info string
@@ -318,10 +318,6 @@ fn update_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     // get the start time
     let time_init_int = i64::from_ne_bytes(time_bytes);
     service.time_init = time_init_int;
-
-    // get the scheme size?
-    let Ok(child_size) = libredox::call::fstat(child_scheme) else {panic!()};
-    service.scheme_size = child_size.st_size;
 
     // close the schemes
     libredox::call::close(time_scheme);
