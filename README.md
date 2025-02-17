@@ -25,5 +25,5 @@ A system health monitoring service for Redox OS
 2. `services` starts the cli tool
 3. `services stop gtrand` will stop gtrand
 4. `services start gtrand` will start gtrand
-5. `services list` will print the PID, current status/message string, and uptime of processes managed by the Service Monitor
+5. `services list` will print managed PIDs, and can additionally print the current "message" string and "time_stamp" of gtrand
 6. use `ps` to see running processes and `cat /scheme/sys/log` to view the log
