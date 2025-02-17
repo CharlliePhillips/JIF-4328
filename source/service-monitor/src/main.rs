@@ -128,7 +128,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     const CMD_STOP: u32 = 1;
     const CMD_START: u32 = 2;
     const CMD_LIST: u32 = 3;
-    const CMD_INFO: u32 = 4;
+    const CMD_INFO: u32 = 5;
 
     match sm_scheme.cmd {
         CMD_STOP => {

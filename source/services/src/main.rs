@@ -64,7 +64,7 @@ fn main() {
         },
 
         //special case for info
-        4 => {
+        5 => {
             let mut full_info_buffer = vec![0u8; 1024]; // may be too small for this command down the line, should be dynamically sized?
             let size = File::read(sm_fd, &mut full_info_buffer).expect("failed to read info from service monitor");
             full_info_buffer.truncate(size);
