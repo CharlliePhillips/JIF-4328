@@ -5,3 +5,11 @@ args = [ "0" ]
 manual_override = true
 depends = []
 scheme_path = "/scheme/gtrand"
+
+[[service]]
+name = "gtrand2"
+type = "daemon"
+args = [ "0" ]
+manual_override = true
+depends = []
+scheme_path = "/scheme/gtrand2"

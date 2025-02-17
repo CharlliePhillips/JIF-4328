@@ -1,0 +1,23 @@
+[package]
+name = "service-base"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "service_base"  
+path = "src/lib.rs"
+
+
+[dependencies]
+rand_chacha = "0.2"
+rand_core = "0.5"
+redox-daemon = "0.1.2"
+redox_syscall = "0.5"
+libredox = "0.1.3"
+sha2 = "0.8"
+redox-scheme = "0.3"
+chrono = "0.4.39"
+hashbrown = "0.15.2"
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+raw-cpuid = "11.0.1"
