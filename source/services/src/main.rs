@@ -2,6 +2,7 @@ use std::{borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::
 use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};  
     
 // todo: replace with Clap crate for robust parsing and help-text
+// todo: report back if service-name is invalid in start, stop commands
 fn main() {
     //https://rust-cli.github.io/book/tutorial/cli-args.html
     let result = std::env::args().nth(1);
