@@ -65,7 +65,16 @@ fn main() {
 
         //special case for info
         4 => {
-            println!("special testing case for info! from services/main.rs");
+            let mut full_info_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later? will probably need to be larger for this command!
+            let size = File::read(sm_fd, &mut full_info_buffer).expect("failed to read info from service monitor");
+            full_info_buffer.truncate(size);
+            let mut data_string = match std::str::from_utf8(&full_info_buffer){
+                Ok(data) => data,
+                Err(e) => "<data not a valid string>"
+            }.to_string();
+            data_string.retain(|c| c != '\0');
+
+            println!("{}", data_string);
         },
 
 

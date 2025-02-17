@@ -71,6 +71,7 @@ fn main() {
             cmd: 0,
             arg1: String::from(""),
             pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
+            info_buffer: Vec::new(),
         };
         
         info!("service-monitor daemonized with pid: {}", std::process::id());
@@ -205,6 +206,16 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             sm_scheme.pid_buffer = bytes;
         },
         CMD_INFO => { // works the same as stop right now, for testing!
+            // needs to pass the information to the buffers:
+            // name
+            // uptime
+            // readcount
+            // writecount
+            // schemesize
+            // errorcount
+            // message
+            // All in that order!
+            // info will be gathered from the service, compiled into the formatted string, then encoded into the buffer as bytes, for services/main.rs to read from the scheme
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                 if service.running {
                     info!("found service: {}, grabbing info now", service.name);
@@ -212,35 +223,84 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
                     let read_buffer: &mut [u8] = &mut [b'0'; 32];
 
+                    let req = b"request_count";
+                    let time = b"time_stamp";
                     let message = b"message";
 
 
                     let message_scheme = libredox::call::dup(child_scheme, message).expect("could not dup message fd");
                     libredox::call::read(message_scheme, read_buffer);
-
-
-                    // sending it to the log via string
-                    let mut data_string = match str::from_utf8(&read_buffer){
+                    // grab the string
+                    let mut message_string = match str::from_utf8(&read_buffer){
                         Ok(data) => data,
                         Err(e) => "<data not a valid string>"
                     }.to_string();
                     // change trailing 0 chars into empty string
-                    data_string.retain(|c| c != '\0');
-                    info!("data string: {:#?}", data_string);
+                    message_string.retain(|c| c != '\0');
+                    //info!("~sm found a data string: {:#?}", message_string);
+
+                    // get and print r/w tuple assume if there is a comma char at index 8 of the read
+                    // bytes then assume bytes 0-7 = tuple.0 and 9-16 are tuple.1
+                    let reqs_scheme = libredox::call::dup(child_scheme, req).expect("could not dup reqs fd");
+                    libredox::call::read(reqs_scheme, read_buffer);
+                    let mut read_int: i64 = 0;
+                    let mut write_int: i64 = 0;
+                    if read_buffer[8] == b',' {
+                        let mut first_int_bytes = [0; 8];
+                        let mut second_int_bytes = [0; 8];
+                        for mut i in 0..8 {
+                            first_int_bytes[i] = read_buffer[i];
+                            second_int_bytes[i] = read_buffer[i + 9];
+                        }
+                        read_int = i64::from_ne_bytes(first_int_bytes);
+                        write_int = i64::from_ne_bytes(second_int_bytes);
+                        //info!("~sm read requests: {:#?}", read_int);
+                        //info!("~sm write requests: {:#?}", write_int);
+                    }
+
+                    let time_scheme = libredox::call::dup(child_scheme, time).expect("could not dup time fd");
+                    // set up the read buffer and read from the scheme into it
+                    libredox::call::read(time_scheme, read_buffer).expect("could not read time response");
+                    // process the buffer based on the request
+                    let mut time_bytes = [0; 8];
+                    for mut i in 0..8 {
+                        time_bytes[i] = read_buffer[i];
+                    }
+
+                    // get and print the timestamp
+                    let time_int = i64::from_ne_bytes(time_bytes);
+                    let time = DateTime::from_timestamp(time_int, 0).unwrap();
+                    let time_string = format!("{}", time.format("%m/%d/%y %H:%M"));
+                    //info!("~sm time stamp: {:#?}", time_string);
+
+                    let mut info_string = format!("Service: {} 
+                    Start time: {} 
+                    Read count: {} 
+                    Write count: {} 
+                    Scheme size: {} 
+                    Error count: {} 
+                    Message: \"{}\"", 
+                    service.name, time_string, read_int, write_int, 0, 0, message_string);
+                    //info!("~sm info string: {:#?}", info_string);
+
+                    // set the info buffer to the formatted info string
+                    sm_scheme.info_buffer = info_string.as_bytes().to_vec();
 
                     // close the schemes
                     libredox::call::close(message_scheme);
                     libredox::call::close(child_scheme);
 
                 } else {
+                    // it should not fail to provide info, so this will need to be changed later
                     warn!("info failed: {} is not running", service.name);
+                    sm_scheme.cmd = 0;
+                    sm_scheme.arg1 = "".to_string();
                 }
             } else {
                 warn!("info failed: no service named '{}'", sm_scheme.arg1);
+                sm_scheme.cmd = 0;
+                sm_scheme.arg1 = "".to_string();
             }
-            //reset the current command value
-            sm_scheme.cmd = 0;
-            sm_scheme.arg1 = "".to_string();
         },
         _ => {}
     }

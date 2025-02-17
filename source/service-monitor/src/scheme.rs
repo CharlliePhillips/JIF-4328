@@ -21,6 +21,7 @@ pub struct SMScheme {
     pub cmd: u32, 
     pub arg1: String,
     pub pid_buffer: Vec<u8>, 
+    pub info_buffer: Vec<u8>,
 }
 
 impl Scheme for SMScheme {
@@ -48,13 +49,24 @@ impl Scheme for SMScheme {
         // for each 8 bytes in pid_buffer print as usize;
         //Ok(0)
 
-        //info!("Read called with cmd: {}", self.cmd);
+        info!("Read called with cmd: {}", self.cmd);
         match self.cmd {
             3 => {
                 let size = std::cmp::min(buf.len(), self.pid_buffer.len());
                 buf[..size].copy_from_slice(&self.pid_buffer[..size]);
                 info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
+
                 self.cmd = 0; // Unlike the other commands, needs to fix cmd here instead of in main
+                Ok(size)
+            }
+
+            4 => {
+                let size = std::cmp::min(buf.len(), self.info_buffer.len());
+                buf[..size].copy_from_slice(&self.info_buffer[..size]);
+                //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
+
+                self.cmd = 0; // Unlike the other commands, needs to fix cmd here instead of in main? what is the solution here?
+                self.arg1 = "".to_string();
                 Ok(size)
             }
             _ => Ok(0),
