@@ -267,19 +267,30 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                         time_bytes[i] = read_buffer[i];
                     }
 
-                    // get and print the timestamp
+                    // get the start time
                     let time_int = i64::from_ne_bytes(time_bytes);
-                    let time = DateTime::from_timestamp(time_int, 0).unwrap();
-                    let time_string = format!("{}", time.format("%m/%d/%y %H:%M"));
+                    let time = Local.timestamp_opt(time_int, 0).unwrap();
+                    // get the current time
+                    let current_time = Local::now();
+                    // get the duration between the two
+                    let duration = current_time.signed_duration_since(time);
+                    let hours = duration.num_hours();
+                    let minutes = duration.num_minutes() % 60;
+                    let seconds = duration.num_seconds() % 60;
+                    let time_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds);
+
+
+
                     //info!("~sm time stamp: {:#?}", time_string);
 
-                    let mut info_string = format!("Service: {} 
-                    Start time: {} 
-                    Read count: {} 
-                    Write count: {} 
-                    Scheme size: {} 
-                    Error count: {} 
-                    Message: \"{}\"", 
+                    let mut info_string = format!("
+                    \n Service: {} 
+                    \n Uptime: {} 
+                    \n Read count: {} 
+                    \n Write count: {} 
+                    \n Scheme size: {} 
+                    \n Error count: {} 
+                    \n Message: \"{}\"", 
                     service.name, time_string, read_int, write_int, 0, 0, message_string);
                     //info!("~sm info string: {:#?}", info_string);
 
