@@ -115,6 +115,7 @@ fn main() {
     .expect("service-monitor: failed to daemonize");
 }
 
+// todo: automatically reset sm_scheme.cmd without having to do it in every branch condition
 /// Checks if the service-monitor's command value has been changed and performs the appropriate action.
 /// Currently supports the following commands:
 /// - stop: check if service is running, if it is then get pid and stop
@@ -195,6 +196,9 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             }
             //info!("PIDs as bytes: {:?}", bytes);
             sm_scheme.pid_buffer = bytes;
+
+            // todo: figure out how to unify this
+            // ! we don't reset the command value here; wait for read() in scheme.rs to handle this case
         },
         None => {},
         _ => {}
