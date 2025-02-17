@@ -125,6 +125,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     const CMD_STOP: u32 = 1;
     const CMD_START: u32 = 2;
     const CMD_LIST: u32 = 3;
+    const CMD_CLEAR: u32 = 4;
 
     match sm_scheme.cmd {
         CMD_STOP => {
@@ -179,6 +180,11 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 } else {
                     warn!("service: '{}' is already running", service.name);
                     test_service_data(service);
+
+                    // When we actually report the total number of reads/writes, it should actually be the total added
+                    // to whatever the current value in the service is, the toal stored in the service monitor is
+                    // updated when the service's count is cleared.
+                    info!("total reads: {}, total writes: {}", service.total_reads, service.total_writes);
                 }
             } else {
                 warn!("start failed: no service named '{}'", sm_scheme.arg1);
@@ -203,10 +209,52 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             //info!("PIDs as bytes: {:?}", bytes);
             sm_scheme.pid_buffer = bytes;
         },
+        CMD_CLEAR => {
+            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+                info!("Clearing short-term stats for '{}'", service.name);
+                clear(service);
+            }
+
+            sm_scheme.cmd = 0;
+            sm_scheme.arg1 = "".to_string();
+        },
         _ => {}
     }
 }
 
+fn clear(service: &mut ServiceEntry) {
+    // open the service scheme
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
+                .expect("couldn't open child scheme");
+    // open the managment subschemes
+    let cntl_scheme = libredox::call::dup(child_scheme, b"control").expect("could not get cntl");
+    let reqs_scheme = libredox::call::dup(child_scheme, b"request_count").expect("couldn't get request_count");
+    
+    // read the requests into a buffer
+    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+    libredox::call::read(reqs_scheme, read_buffer);
+
+    // turn that buffer into read/write as integers
+    if read_buffer[8] == b',' {
+        let mut first_int_bytes = [0; 8];
+        let mut second_int_bytes = [0; 8];
+        for mut i in 0..8 {
+            first_int_bytes[i] = read_buffer[i];
+            second_int_bytes[i] = read_buffer[i + 9];
+        }
+        let first_int = u64::from_ne_bytes(first_int_bytes);
+        let second_int = u64::from_ne_bytes(second_int_bytes);
+
+        // count this for our service's total
+        service.total_reads += first_int;
+        service.total_writes += second_int;
+    }
+
+    // clear the data and close the schemes.            
+    libredox::call::write(cntl_scheme, b"clear").expect("could not write to cntl");
+    libredox::call::close(cntl_scheme).expect("failed to close cntl");
+    libredox::call::close(child_scheme).expect("failed to close child");
+}
 
 fn test_service_data(service: &mut ServiceEntry) {
     warn!("testing service data!");
