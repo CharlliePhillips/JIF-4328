@@ -51,8 +51,16 @@ fn main() {
             let success = File::write(sm_fd, &cmd_buf).expect("failed to write command to service monitor");
             
             match success {
-                //special case for list
-                // todo: figure out how to get this success code associated with the command, rather than using hardcoded number directly
+                // todo: replace this with a more robust status mechanism.
+                // this currently uses a hardcoded value returned to the Ok() status in
+                // Scheme's override for File::write
+                // requirements:
+                // - avoid hardcoded values
+                // - allow for status definitions for start: SERVICE_ALREADY_STARTED, NO_SUCH_SERVICE
+                // - allow for status definitions for stop: SERVICE_ALREADY_STOPPED, NO_SUCH_SERVICE
+                // - optional: pass back error string somehow. this isn't critical but might be nice to hear back from the service-monitor service directly
+
+                // list printout
                 3 => {
                     let mut pid_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later
                     let size = File::read(sm_fd, &mut pid_buffer).expect("failed to read PIDs from service monitor");
@@ -66,7 +74,6 @@ fn main() {
                     }).collect();
                     println!("PIDs: {:?}", pids);
                 }
-
 
                 _ => println!("write command returned value: {success:#?}")
             }
