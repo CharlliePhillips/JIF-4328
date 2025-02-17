@@ -81,5 +81,6 @@ fn print_help_text() {
     println!("Usage:
     services start <service-name>   Start service
     services stop <service-name>    Stop service
-    services list                   List PIDs of currently running services");
+    services list                   List PIDs of currently running services
+    services --help                 Print this help text");
 }
