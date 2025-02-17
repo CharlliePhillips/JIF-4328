@@ -209,16 +209,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             sm_scheme.pid_buffer = bytes;
         },
         CMD_INFO => {
-            // needs to pass the information to the buffers:
-            // name
-            // uptime
-            // readcount
-            // writecount
-            // schemesize
-            // errorcount
-            // message
-            // All in that order!
-            // info will be gathered from the service, compiled into the formatted string, then encoded into the buffer as bytes, for services/main.rs to read from the scheme
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                 if service.running {
                     info!("found service: {}, grabbing info now", service.name);
@@ -227,9 +217,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 
                     // set up time strings
                     let time_init = Local.timestamp_opt(service.time_init, 0).unwrap();
-                    // get the current time
                     let current_time = Local::now();
-                    // get the duration between the two
                     let duration = current_time.signed_duration_since(time_init);
                     let hours = duration.num_hours();
                     let minutes = duration.num_minutes() % 60;
@@ -238,6 +226,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
                     let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
 
+                    // this may not be working, time values are always identical, need to check the the order of these values being created
                     info!("~sm time started registered versus time initialized: {}, {}", service.time_started, service.time_init);
                     let time_started = Local.timestamp_opt(service.time_started, 0).unwrap();
                     let init_duration = time_init.signed_duration_since(time_started);
@@ -248,6 +237,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     let time_init_string = format!("{} minutes, {} seconds", init_minutes, init_seconds_with_millis);
 
 
+                    // set up the info string
                     let mut info_string = format!(
                     "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nScheme size: {} \nError count: {} \nMessage: \"{}\" ", 
                     service.name, uptime_string, time_init_string, service.read_count, service.write_count, service.scheme_size, service.error_count, service.message);
@@ -255,7 +245,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 
                     // set the info buffer to the formatted info string
                     sm_scheme.info_buffer = info_string.as_bytes().to_vec();
-
 
                 } else {
                     // it should not fail to provide info, so this will need to be changed later

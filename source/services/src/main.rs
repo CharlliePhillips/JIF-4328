@@ -65,7 +65,7 @@ fn main() {
 
         //special case for info
         4 => {
-            let mut full_info_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later? will probably need to be larger for this command!
+            let mut full_info_buffer = vec![0u8; 1024]; // may be too small for this command down the line, should be dynamically sized?
             let size = File::read(sm_fd, &mut full_info_buffer).expect("failed to read info from service monitor");
             full_info_buffer.truncate(size);
             let mut data_string = match std::str::from_utf8(&full_info_buffer){

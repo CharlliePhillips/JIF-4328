@@ -65,7 +65,7 @@ impl Scheme for SMScheme {
                 buf[..size].copy_from_slice(&self.info_buffer[..size]);
                 //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
 
-                self.cmd = 0; // Unlike the other commands, needs to fix cmd here instead of in main? what is the solution here?
+                self.cmd = 0;
                 self.arg1 = "".to_string();
                 Ok(size)
             }
