@@ -30,9 +30,11 @@ fn main() {
     // start dependencies
     for service in services.values_mut() {
         let name: &str = service.name.as_str();
+        service.time_started = Local::now().timestamp(); // where should this go?
         let mut child_service: Child = std::process::Command::new(name).spawn().expect("failed to start child service");
         child_service.wait();
         service.running = true;
+        
         
         // SCRUM-39 TODO: this block should be turned into a new function that preforms this in a single here but can also
         // handle variable requests, maybe definining an enum with all the request types instead of a string would be helpful?
@@ -153,6 +155,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                         Ok(mut child) => {
                             //service.pid = child.id().try_into().unwrap();
                             //service.pid += 2;
+                            service.time_started = Local::now().timestamp(); // where should this go for the start command?
                             child.wait();
                             let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
                                 .expect("couldn't open child scheme");
@@ -205,7 +208,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             //info!("PIDs as bytes: {:?}", bytes);
             sm_scheme.pid_buffer = bytes;
         },
-        CMD_INFO => { // works the same as stop right now, for testing!
+        CMD_INFO => {
             // needs to pass the information to the buffers:
             // name
             // uptime
@@ -268,36 +271,40 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     }
 
                     // get the start time
-                    let time_int = i64::from_ne_bytes(time_bytes);
-                    let time = Local.timestamp_opt(time_int, 0).unwrap();
+                    let time_init_int = i64::from_ne_bytes(time_bytes);
+                    let time_init = Local.timestamp_opt(time_init_int, 0).unwrap();
                     // get the current time
                     let current_time = Local::now();
                     // get the duration between the two
-                    let duration = current_time.signed_duration_since(time);
+                    let duration = current_time.signed_duration_since(time_init);
                     let hours = duration.num_hours();
                     let minutes = duration.num_minutes() % 60;
                     let seconds = duration.num_seconds() % 60;
-                    let time_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds);
+                    let millisecs = duration.num_milliseconds() % 1000;
+                    let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
+                    let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
+
+                    info!("~sm time started registered versus time initialized: {}, {}", service.time_started, time_init_int);
+                    let time_started = Local.timestamp_opt(service.time_started, 0).unwrap();
+                    let init_duration = time_init.signed_duration_since(time_started);
+                    let init_minutes = init_duration.num_minutes();
+                    let init_seconds = init_duration.num_seconds() % 60;
+                    let init_millisecs = init_duration.num_milliseconds() % 1000;
+                    let init_seconds_with_millis = format!("{:.3}", init_seconds as f64 + (init_millisecs as f64 / 1000.0));
+                    let time_init_string = format!("{} minutes, {} seconds", init_minutes, init_seconds_with_millis);
 
 
-
-                    //info!("~sm time stamp: {:#?}", time_string);
-
-                    let mut info_string = format!("
-                    \n Service: {} 
-                    \n Uptime: {} 
-                    \n Read count: {} 
-                    \n Write count: {} 
-                    \n Scheme size: {} 
-                    \n Error count: {} 
-                    \n Message: \"{}\"", 
-                    service.name, time_string, read_int, write_int, 0, 0, message_string);
+                    let mut info_string = format!(
+                    "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nScheme size: {} \nError count: {} \nMessage: \"{}\" ", 
+                    service.name, uptime_string, time_init_string, read_int, write_int, 0, 0, message_string);
                     //info!("~sm info string: {:#?}", info_string);
 
                     // set the info buffer to the formatted info string
                     sm_scheme.info_buffer = info_string.as_bytes().to_vec();
 
                     // close the schemes
+                    libredox::call::close(time_scheme);
+                    libredox::call::close(reqs_scheme);
                     libredox::call::close(message_scheme);
                     libredox::call::close(child_scheme);
 

@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use chrono::prelude::*;
 use std::{fs::File, io::Read, path::Path};
 use hashbrown::HashMap;
 
@@ -23,6 +24,7 @@ pub struct ServiceEntry {
     pub scheme_path: String,
     pub running: bool,
     pub pid: usize,
+    pub time_started: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +68,7 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
             scheme_path: s.scheme_path,
             running: false,
             pid: 0,
+            time_started: 0,
         };
     services.insert(s.name, new_entry);
     }
