@@ -1,6 +1,7 @@
 use std::{borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Command, Stdio}};
 use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};  
     
+// todo: replace with Clap crate for robust parsing and help-text
 fn main() {
     //https://rust-cli.github.io/book/tutorial/cli-args.html
     let arg1 = std::env::args().nth(1).expect("no arg1 given");
@@ -29,6 +30,14 @@ fn main() {
 
         }
 
+        "help" => {
+            println!("Usage:
+    services start <service-name>   Start service
+    services stop <service-name>    Stop service
+    services list                   List PIDs of currently running services");
+            return;
+        }
+
         _ => {
             println!("invalid arguments arg1: {:?}", arg1);
             return;
@@ -42,6 +51,7 @@ fn main() {
     
     match success {
         //special case for list
+        // todo: figure out how to get this success code associated with the command, rather than using hardcoded number directly
         3 => {
             let mut pid_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later
             let size = File::read(sm_fd, &mut pid_buffer).expect("failed to read PIDs from service monitor");
