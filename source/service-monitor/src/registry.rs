@@ -14,7 +14,8 @@ pub struct Service {
     scheme_path: String,
 }
 
-//we may want to consider the visibility of these a little more carefully, all set to pub rn to make things work.
+// we may want to consider the visibility of these a little more carefully, all set to pub rn to make things work.
+// this def needs a better name though.
 pub struct ServiceEntry {
     pub name: String,
     pub r#type: String,
@@ -31,6 +32,11 @@ pub struct ServiceEntry {
     pub error_count: i64,
     pub last_response_time: i64,
     pub message: String,
+    pub total_reads: u64, 
+    pub total_writes: u64,
+    pub total_opens: u64,
+    pub total_closes: u64,
+    pub total_dups: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,6 +87,11 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
             error_count: 0,
             last_response_time: 0,
             message: String::new(),
+            total_reads: 0, 
+            total_writes: 0,
+            total_opens: 0,
+            total_closes: 0,
+            total_dups: 0,
         };
     services.insert(s.name, new_entry);
     }

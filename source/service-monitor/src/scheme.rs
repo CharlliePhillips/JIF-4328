@@ -108,6 +108,17 @@ impl Scheme for SMScheme {
                 r = 3;
             }
 
+            b"clear" => {
+                self.cmd = 4;
+                let mut idx: usize = 6;
+
+                while(buffer[idx] != b';') {
+                    self.arg1.push(buffer[idx] as char);
+                    idx += 1;
+                }
+                r = 4;
+            }
+
             b"info " => {
                 self.cmd = 5;
                 let mut idx: usize = 5;
