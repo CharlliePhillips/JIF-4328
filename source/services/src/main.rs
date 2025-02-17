@@ -88,6 +88,17 @@ fn main() {
                 let mut data_vec: Vec<GenericData> = Vec::new();
             
                 match listarg2.as_str() {
+                    "pid" => {
+                        list_helper(&listarg2, &mut data_vec);
+                        let raw_bytes = extract_bytes(&data_vec);
+                        
+                        let mut servicePID_bytes = [0; 4];
+                        servicePID_bytes.copy_from_slice(&raw_bytes[..4.min(raw_bytes.len())]);
+                        let service_pid = u32::from_ne_bytes(servicePID_bytes);
+                        
+                        println!("pid: {:#?}", service_pid);
+                    }
+                
                     "time_stamp" => {
                         list_helper(&listarg2, &mut data_vec);
                         let raw_bytes = extract_bytes(&data_vec);
