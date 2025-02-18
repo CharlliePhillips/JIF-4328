@@ -21,6 +21,7 @@ pub struct SMScheme {
     pub cmd: u32, 
     pub arg1: String,
     pub pid_buffer: Vec<u8>, 
+    pub info_buffer: Vec<u8>,
 }
 
 impl Scheme for SMScheme {
@@ -48,16 +49,29 @@ impl Scheme for SMScheme {
         // for each 8 bytes in pid_buffer print as usize;
         //Ok(0)
 
-        //info!("Read called with cmd: {}", self.cmd);
-        if self.cmd == 3 {
-            let size = std::cmp::min(buf.len(), self.pid_buffer.len());
-            buf[..size].copy_from_slice(&self.pid_buffer[..size]);
-            info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
-            self.cmd = 0; //unlike the other commands, needs to fix cmd here instead of in main
-            Ok(size)
-        } else {
-            Ok(0)
-        } 
+        info!("Read called with cmd: {}", self.cmd);
+        match self.cmd {
+            3 => {
+                let size = std::cmp::min(buf.len(), self.pid_buffer.len());
+                buf[..size].copy_from_slice(&self.pid_buffer[..size]);
+                info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
+
+                self.cmd = 0; // Unlike the other commands, needs to fix cmd here instead of in main
+                Ok(size)
+            }
+
+            5 => {
+                let size = std::cmp::min(buf.len(), self.info_buffer.len());
+                buf[..size].copy_from_slice(&self.info_buffer[..size]);
+                //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
+
+                self.cmd = 0;
+                self.arg1 = "".to_string();
+                Ok(size)
+            }
+            _ => Ok(0),
+        }
+        
     }
 
 
@@ -97,11 +111,22 @@ impl Scheme for SMScheme {
             b"clear" => {
                 self.cmd = 4;
                 let mut idx: usize = 6;
+
                 while(buffer[idx] != b';') {
                     self.arg1.push(buffer[idx] as char);
                     idx += 1;
                 }
                 r = 4;
+            }
+
+            b"info " => {
+                self.cmd = 5;
+                let mut idx: usize = 5;
+                while(buffer[idx] != b';') {
+                    self.arg1.push(buffer[idx] as char);
+                    idx += 1;
+                }
+                r = 5;
             }
 
             _ => {

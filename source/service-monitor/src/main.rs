@@ -30,9 +30,11 @@ fn main() {
     // start dependencies
     for service in services.values_mut() {
         let name: &str = service.name.as_str();
+        service.time_started = Local::now().timestamp(); // where should this go?
         let mut child_service: Child = std::process::Command::new(name).spawn().expect("failed to start child service");
         child_service.wait();
         service.running = true;
+        
         
         // SCRUM-39 TODO: this block should be turned into a new function that preforms this in a single here but can also
         // handle variable requests, maybe definining an enum with all the request types instead of a string would be helpful?
@@ -71,6 +73,7 @@ fn main() {
             cmd: 0,
             arg1: String::from(""),
             pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
+            info_buffer: Vec::new(),
         };
         
         info!("service-monitor daemonized with pid: {}", std::process::id());
@@ -126,6 +129,8 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     const CMD_START: u32 = 2;
     const CMD_LIST: u32 = 3;
     const CMD_CLEAR: u32 = 4;
+    const CMD_INFO: u32 = 5;
+
 
     match sm_scheme.cmd {
         CMD_STOP => {
@@ -152,6 +157,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                         Ok(mut child) => {
                             //service.pid = child.id().try_into().unwrap();
                             //service.pid += 2;
+                            service.time_started = Local::now().timestamp(); // where should this go for the start command?
                             child.wait();
                             let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
                                 .expect("couldn't open child scheme");
@@ -218,13 +224,127 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             sm_scheme.cmd = 0;
             sm_scheme.arg1 = "".to_string();
         },
+        CMD_INFO => {
+            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+                if service.running {
+                    info!("found service: {}, grabbing info now", service.name);
+
+                    update_info(service, sm_scheme);
+
+                    // set up time strings
+                    let time_init = Local.timestamp_opt(service.time_init, 0).unwrap();
+                    let current_time = Local::now();
+                    let duration = current_time.signed_duration_since(time_init);
+                    let hours = duration.num_hours();
+                    let minutes = duration.num_minutes() % 60;
+                    let seconds = duration.num_seconds() % 60;
+                    let millisecs = duration.num_milliseconds() % 1000;
+                    let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
+                    let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
+
+                    // this may not be working, time values are always identical, need to check the the order of these values being created
+                    info!("~sm time started registered versus time initialized: {}, {}", service.time_started, service.time_init);
+                    let time_started = Local.timestamp_opt(service.time_started, 0).unwrap();
+                    let init_duration = time_init.signed_duration_since(time_started);
+                    let init_minutes = init_duration.num_minutes();
+                    let init_seconds = init_duration.num_seconds() % 60;
+                    let init_millisecs = init_duration.num_milliseconds() % 1000;
+                    let init_seconds_with_millis = format!("{:.3}", init_seconds as f64 + (init_millisecs as f64 / 1000.0));
+                    let time_init_string = format!("{} minutes, {} seconds", init_minutes, init_seconds_with_millis);
+
+
+                    // set up the info string
+                    let mut info_string = format!(
+                    "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nError count: {} \nMessage: \"{}\" ", 
+                    service.name, uptime_string, time_init_string, service.read_count, service.write_count, service.error_count, service.message);
+                    //info!("~sm info string: {:#?}", info_string);
+
+                    // set the info buffer to the formatted info string
+                    sm_scheme.info_buffer = info_string.as_bytes().to_vec();
+
+                } else {
+                    // it should not fail to provide info, so this will need to be changed later
+                    warn!("info failed: {} is not running", service.name);
+                    sm_scheme.cmd = 0;
+                    sm_scheme.arg1 = "".to_string();
+                }
+            } else {
+                warn!("info failed: no service named '{}'", sm_scheme.arg1);
+                sm_scheme.cmd = 0;
+                sm_scheme.arg1 = "".to_string();
+            }
+        },
         _ => {}
     }
 }
 
+fn update_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
+    info!("updating information for: {}", service.name);
+
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
+    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+
+    let req = b"request_count";
+    let time = b"time_stamp";
+    let message = b"message";
+
+
+    let message_scheme = libredox::call::dup(child_scheme, message).expect("could not dup message fd");
+    libredox::call::read(message_scheme, read_buffer);
+    // grab the string
+    let mut message_string = match str::from_utf8(&read_buffer){
+        Ok(data) => data,
+        Err(e) => "<data not a valid string>"
+    }.to_string();
+    // change trailing 0 chars into empty string
+    message_string.retain(|c| c != '\0');
+    //info!("~sm found a data string: {:#?}", message_string);
+    service.message = message_string;
+
+    // get and print r/w tuple assume if there is a comma char at index 8 of the read
+    // bytes then assume bytes 0-7 = tuple.0 and 9-16 are tuple.1
+    let reqs_scheme = libredox::call::dup(child_scheme, req).expect("could not dup reqs fd");
+    libredox::call::read(reqs_scheme, read_buffer);
+    let mut read_int: i64 = 0;
+    let mut write_int: i64 = 0;
+    if read_buffer[8] == b',' {
+        let mut first_int_bytes = [0; 8];
+        let mut second_int_bytes = [0; 8];
+        for mut i in 0..8 {
+            first_int_bytes[i] = read_buffer[i];
+            second_int_bytes[i] = read_buffer[i + 9];
+        }
+        read_int = i64::from_ne_bytes(first_int_bytes);
+        write_int = i64::from_ne_bytes(second_int_bytes);
+        //info!("~sm read requests: {:#?}", read_int);
+        //info!("~sm write requests: {:#?}", write_int);
+    }
+    service.read_count = read_int;
+    service.write_count = write_int;
+
+    let time_scheme = libredox::call::dup(child_scheme, time).expect("could not dup time fd");
+    // set up the read buffer and read from the scheme into it
+    libredox::call::read(time_scheme, read_buffer).expect("could not read time response");
+    // process the buffer based on the request
+    let mut time_bytes = [0; 8];
+    for mut i in 0..8 {
+        time_bytes[i] = read_buffer[i];
+    }
+
+    // get the start time
+    let time_init_int = i64::from_ne_bytes(time_bytes);
+    service.time_init = time_init_int;
+
+    // close the schemes
+    libredox::call::close(time_scheme);
+    libredox::call::close(reqs_scheme);
+    libredox::call::close(message_scheme);
+    libredox::call::close(child_scheme);
+}
+
 fn clear(service: &mut ServiceEntry) {
     // open the service scheme
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0)
                 .expect("couldn't open child scheme");
     // open the managment subschemes
     let cntl_scheme = libredox::call::dup(child_scheme, b"control").expect("could not get cntl");
