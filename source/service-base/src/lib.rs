@@ -45,7 +45,7 @@ pub struct BaseScheme {
     // the actual scheme object
     handlers: HashMap<usize, ManagmentSubScheme>,
     next_mgmt_id: AtomicUsize,
-    managment: Managment,
+    managment: Arc<Mutex<Managment>>,
 }
 
 impl BaseScheme {
@@ -71,24 +71,50 @@ impl BaseScheme {
                     Local::now().timestamp()
                 )))),
             message_scheme: Arc::new(Mutex::new(Box::new(
-                MessageScheme([0; 32])))),
+                MessageScheme([65; 32])))),
             control_scheme: Arc::new(Mutex::new(Box::new(
                     ControlScheme{stop: false, clear: false}
                 ))),
             handlers: HashMap::new(),
             next_mgmt_id: 9999.into(),
-            managment: Managment::new(),
+            managment: Arc::new(Mutex::new(Managment::new())),
         }
     }
 
     fn handler(&self, id: usize) -> Result<SubSchemeGuard>{
+        let _cleared = self.update()?;
         match self.handlers.get(&id) {
             None => Err(Error::new(EBADF)),
             Some(subscheme) => subscheme.lock().map_err(|err|
                 Error::new(EBADF)
             ),
         }
-   }
+    }
+
+    // need to consider what value will be returned based on what update was made?
+    // for now return 1 if cleared and 0 if not, error if control scheme cannot be locked
+    fn update(&self) -> Result<usize> {
+        let mut control_lock = self.control_scheme.lock().map_err(|err| Error::new(EBADF))?;
+        let r_buf: &mut [u8] = &mut [b'\0';2];
+        // for now this id is unused but this could cause problems later
+        control_lock.read(0, r_buf, 0, 0);
+        // see ControlScheme fn read(), the byte at index one is our clear bit.
+        if r_buf[1] == 1{
+            // TODO: figure out how graceful stop affects this
+            let mut message_lock = self.message_scheme.lock().map_err(|err| Error::new(EBADF))?;
+            message_lock.write(0, b"message cleared", 0, 0);
+            
+            // TODO: get a lock on the reuqests scheme and write to clear it
+            let mut requests_lock = self.requests_scheme.lock().map_err(|err| Error::new(EBADF))?;
+            requests_lock.write(0, b"clear", 0, 0);
+
+            // clear the control scheme so we know not to update again
+            control_lock.write(0, b"cleared", 0, 0);
+            return Ok(1);
+        } else {
+            return Ok(0);
+        }
+    }
 }
 impl Scheme for BaseScheme {
     // add ability to select subscheme from open by path?
@@ -127,13 +153,18 @@ impl Scheme for BaseScheme {
                 b"message" => {
                     let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.message_scheme.clone());
-                    self.write(new_id, b"test message", 0, 0);
                     Ok(new_id)
                 }
 
                 b"request_count" => {
                     let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.requests_scheme.clone());
+                    Ok(new_id)
+                }
+                
+                b"control" => {
+                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                    self.handlers.insert(new_id, self.control_scheme.clone());
                     Ok(new_id)
                 }
 
@@ -247,6 +278,16 @@ impl Scheme for PidScheme {
     }
 }
 impl Scheme for RequestsScheme {
+    fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize>{
+        if buf == b"clear"{
+            self.reads = 0;
+            self.writes = 0;
+            self.opens = 0;
+            self.closes = 0;
+            self.dups = 0;
+        }
+        Ok(buf.len())
+    }
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let read_bytes = &self.reads.to_ne_bytes();
         let write_bytes = &self.writes.to_ne_bytes();
@@ -277,18 +318,59 @@ impl Scheme for MessageScheme {
     
     fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         // message is already stored as an array of bytes
+        self.0 = [0; 32];
         fill_buffer(&mut self.0, buf);
         Ok(buf.len())
     }
 }
 
 impl Scheme for ControlScheme {
+    fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+        // message is already stored as an array of bytes
+        if self.stop {
+            buf[0] = 1;
+        } else {
+            buf[0] = 0;
+        }
+        if self.clear {
+            buf[1] = 1;
+        } else {
+            buf[1] = 0;
+        }
+        Ok(buf.len())
+    }
+    fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
+        // message is already stored as an array of bytes
+        match buf {
+            b"clear" => {
+                self.clear = true;
+            }
+             
+            b"cleared" => {
+                self.clear = false;
+            }
+            
+            b"stop" => {
+            
+            }
+            
+            _ => {
 
+            }
+        }  
+        Ok(buf.len())
+    }
+    fn close(&mut self, _id: usize) -> Result<usize> {
+        // for some reason only this one crashes when closed using default implementation
+        // this makes it not crash...?
+        Ok(0)
+    }
 }
 
 fn fill_buffer(dest: &mut [u8], src: &[u8]) {
     let mut i = 0;
     for byte in src {
+        dest[i] = 0;
         dest[i] = *byte;
         i += 1;
     }

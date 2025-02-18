@@ -344,7 +344,7 @@ fn update_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
 
 fn clear(service: &mut ServiceEntry) {
     // open the service scheme
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0)
                 .expect("couldn't open child scheme");
     // open the managment subschemes
     let cntl_scheme = libredox::call::dup(child_scheme, b"control").expect("could not get cntl");
