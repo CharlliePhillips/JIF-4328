@@ -278,7 +278,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     }
 }
 
-<<<<<<< source/service-monitor/src/main.rs
 fn update_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     info!("updating information for: {}", service.name);
 
@@ -308,21 +307,6 @@ fn update_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     libredox::call::read(reqs_scheme, read_buffer);
     let mut read_int: i64 = 0;
     let mut write_int: i64 = 0;
-=======
-fn clear(service: &mut ServiceEntry) {
-    // open the service scheme
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
-                .expect("couldn't open child scheme");
-    // open the managment subschemes
-    let cntl_scheme = libredox::call::dup(child_scheme, b"control").expect("could not get cntl");
-    let reqs_scheme = libredox::call::dup(child_scheme, b"request_count").expect("couldn't get request_count");
-    
-    // read the requests into a buffer
-    let read_buffer: &mut [u8] = &mut [b'0'; 32];
-    libredox::call::read(reqs_scheme, read_buffer);
-
-    // turn that buffer into read/write as integers
->>>>>>> source/service-monitor/src/main.rs
     if read_buffer[8] == b',' {
         let mut first_int_bytes = [0; 8];
         let mut second_int_bytes = [0; 8];
@@ -330,7 +314,6 @@ fn clear(service: &mut ServiceEntry) {
             first_int_bytes[i] = read_buffer[i];
             second_int_bytes[i] = read_buffer[i + 9];
         }
-<<<<<<< source/service-monitor/src/main.rs
         read_int = i64::from_ne_bytes(first_int_bytes);
         write_int = i64::from_ne_bytes(second_int_bytes);
         //info!("~sm read requests: {:#?}", read_int);
@@ -359,7 +342,26 @@ fn clear(service: &mut ServiceEntry) {
     libredox::call::close(child_scheme);
 }
 
-=======
+fn clear(service: &mut ServiceEntry) {
+    // open the service scheme
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
+                .expect("couldn't open child scheme");
+    // open the managment subschemes
+    let cntl_scheme = libredox::call::dup(child_scheme, b"control").expect("could not get cntl");
+    let reqs_scheme = libredox::call::dup(child_scheme, b"request_count").expect("couldn't get request_count");
+    
+    // read the requests into a buffer
+    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+    libredox::call::read(reqs_scheme, read_buffer);
+
+    // turn that buffer into read/write as integers
+    if read_buffer[8] == b',' {
+        let mut first_int_bytes = [0; 8];
+        let mut second_int_bytes = [0; 8];
+        for mut i in 0..8 {
+            first_int_bytes[i] = read_buffer[i];
+            second_int_bytes[i] = read_buffer[i + 9];
+        }
         let first_int = u64::from_ne_bytes(first_int_bytes);
         let second_int = u64::from_ne_bytes(second_int_bytes);
 
@@ -373,7 +375,6 @@ fn clear(service: &mut ServiceEntry) {
     libredox::call::close(cntl_scheme).expect("failed to close cntl");
     libredox::call::close(child_scheme).expect("failed to close child");
 }
->>>>>>> source/service-monitor/src/main.rs
 
 fn test_service_data(service: &mut ServiceEntry) {
     warn!("testing service data!");
