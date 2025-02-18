@@ -53,12 +53,16 @@ impl Scheme for SMScheme {
         info!("Read called with cmd: {}", self.cmd);
         match self.cmd {
             3 => {
-                let size = std::cmp::min(buf.len(), self.list_buffer.len());
-                buf[..size].copy_from_slice(&self.list_buffer[..size]);
-                info!("Read {} bytes from list_buffer: {:?}", size, &buf[..size]);
-
-                self.cmd = 0; // Unlike the other commands, needs to fix cmd here instead of in main
-                Ok(size)
+                if buf.len() >= 4 {
+                    let size = std::cmp::min(buf.len(), self.pid_buffer.len());
+                    buf[..size].copy_from_slice(&self.pid_buffer[..size]);
+                    info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
+                
+                    self.cmd = 0; //unlike the other commands, needs to fix cmd here instead of in main
+                    Ok(size)
+                } else {
+                    return Err(Error::new(EINVAL));
+                }
             }
 
             5 => {
