@@ -57,17 +57,18 @@ fn main() {
     match success {
         //special case for list
         3 => {
-            let mut pid_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later
-            let size = File::read(sm_fd, &mut pid_buffer).expect("failed to read PIDs from service monitor");
-            pid_buffer.truncate(size);
+            //need to handle similar to 4 width
+            let mut list_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later
+            let size = File::read(sm_fd, &mut list_buffer).expect("failed to read PIDs from service monitor");
+            list_buffer.truncate(size);
 
-            //since each PID is 4 bytes, we chunk and read that way
-            let pids: Vec<usize> = pid_buffer.chunks(4).map(|chunk| {
-                let mut array = [0u8; 4];
-                array.copy_from_slice(chunk);
-                u32::from_ne_bytes(array) as usize
-            }).collect();
-            println!("PIDs: {:?}", pids);
+            let mut data_string = match std::str::from_utf8(&list_buffer){
+                Ok(data) => data,
+                Err(e) => "<data not a valid string>"
+            }.to_string();
+            data_string.retain(|c| c != '\0');
+
+            println!("{}", data_string);
         },
 
         //special case for info

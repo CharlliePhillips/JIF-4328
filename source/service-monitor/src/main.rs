@@ -74,6 +74,7 @@ fn main() {
             arg1: String::from(""),
             pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
             info_buffer: Vec::new(),
+            list_buffer: Vec::new(),
         };
         
         info!("service-monitor daemonized with pid: {}", std::process::id());
@@ -200,20 +201,38 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             sm_scheme.arg1 = "".to_string();
         },
         CMD_LIST => {
-            let mut pids: Vec<usize> = Vec::new();
-            for service in services.values() {
-                if (service.running) {
-                    pids.push(service.pid);
+            let mut servList: Vec<usize> = Vec::new();
+            let mut endString:String = "Name | PID | Uptime | Message | Status\n".to_string();
+            
+            //let mut listString = "";
+            //hashmap_bytes(services, sm_scheme);
+            for service in services.values_mut() {
+                //let service = services.get_mut(&sm_scheme.arg1)
+                if service.running {
+                    update_info(service, sm_scheme);
+                    // set up time strings
+                    let time_init = Local.timestamp_opt(service.time_init, 0).unwrap();
+                    let current_time = Local::now();
+                    let duration = current_time.signed_duration_since(time_init);
+                    let hours = duration.num_hours();
+                    let minutes = duration.num_minutes() % 60;
+                    let seconds = duration.num_seconds() % 60;
+                    let millisecs = duration.num_milliseconds() % 1000;
+                    let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
+                    let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
+                    
+                    let listString = format!("{} | {} | {} | {} | Running\n", service.name, service.pid, uptime_string, service.message);
+                    info!("line: {}", listString);
+                    endString.push_str(&listString);
+                    
+                    info!("End: {}", endString);
+                    info!("{:#?}", sm_scheme.list_buffer.as_ptr());
+                } else {
+                    let listString = format!("{} | none | none | none | not running\n", service.name);
                 }
             }
-            info!("Listing PIDs: {:?}", pids);
-            let mut bytes: Vec<u8> = Vec::new();
-            for pid in pids {
-                let pid_u32 = pid as u32;
-                bytes.extend_from_slice(&pid_u32.to_ne_bytes());
-            }
-            //info!("PIDs as bytes: {:?}", bytes);
-            sm_scheme.pid_buffer = bytes;
+                
+            sm_scheme.list_buffer = endString.as_bytes().to_vec();
         },
         CMD_CLEAR => {
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
