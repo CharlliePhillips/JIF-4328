@@ -247,17 +247,13 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 
 Example: 
 ```toml
-[service] 
-
-Name = “zerod” 
-
-Type = “daemon” 
-
-Args = [] 
-
-Manual_Override = false 
-
-Depends = [] 
+[[service]]
+name = "<service>"
+type = "daemon"
+args = [ "0" ]
+manual_override = true
+depends = []
+scheme_path = "/scheme/<service>"
 ```
 
 ## Design Overview 
