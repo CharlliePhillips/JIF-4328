@@ -66,7 +66,8 @@ also look at ‘ps’ command for inspo
             // this line will block until the read is complete or 5 seconds has passed, whichever comes first.
             let result = receiver.recv_timeout(Duration::from_millis(5000));
             ```
-            - This timeout code can be used with the open, read, write, & dup syscalls in helper functions of the service monitor to prevent the calls from hanging and consequently hanging the service monitor. If the reciever times out then it will return an error to the result and the daemon should be marked as not responding, kill the process and mark it as not running.
+            - This timeout code can be used with the open, read, write, & dup syscalls in helper functions of the service monitor to prevent the calls from hanging and consequently hanging the service monitor. If the reciever times out then it will return an error attempt to restart it.
+            - If it is restarted then the restart time is recorded by service monitor, if we attempt to restart this service again within 5 seconds of this recorded time then the service is marked as unresponsive. An unresponsive service will be 
             - This does leave a question open on if we are unable to open and read the pid from a service we just started then should we assume it failed to start?
             - more info [in the rust docs](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html).
  3. **services clear <daemon_name>:**

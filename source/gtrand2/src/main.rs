@@ -133,6 +133,7 @@ impl RandScheme {
             },
             open_descriptors: BTreeMap::new(),
             next_fd: Wrapping(0),
+            timeout: false,
         }
     }
 

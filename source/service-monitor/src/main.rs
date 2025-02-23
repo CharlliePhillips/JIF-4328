@@ -196,7 +196,10 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     };
                 } else {
                     warn!("service: '{}' is already running", service.name);
-                    test_service_data(service);
+                    // we only want to trigger this test on gtrand2 so it will only work when starting gtrand2 twice
+                    if (service.name == "gtrand2") {
+                        test_timeout(service);
+                    }
 
                     // When we actually report the total number of reads/writes, it should actually be the total added
                     // to whatever the current value in the service is, the toal stored in the service monitor is
@@ -405,11 +408,15 @@ fn clear(service: &mut ServiceEntry) {
     libredox::call::close(child_scheme).expect("failed to close child");
 }
 
-fn test_timeout() {
-    let gtrand2 = libredox::call::open("/scheme/gtrand2").expect("this should also work fs"); 
-    let timeout_req =  b"timeout";
-    write(gtrand2, timeout_req).expect("this should work fs");
+fn test_timeout(gtrand2: &mut ServiceEntry) {
+    let timeout_req =  "timeout";
+    wHelper(gtrand2, "", timeout_req);
+    let read_buf = &mut [b'0';32];
 
+    // for now we expect this to hang, 
+    rHelper(gtrand2, read_buf,"");
+    // future success? message
+    info!("gtrand 2 timed out!");
 }
 
 fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) {
