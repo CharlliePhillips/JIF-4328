@@ -53,33 +53,22 @@ also look at ‘ps’ command for inspo
         - Last response time – The last time that the daemon was responsive for timeouts. 
     - **What info shows if a daemon is not responding?**
         - If a daemon is not responding: 
-            - A daemon marked as not responding if it has been restarted too many times in too short of a time period. If the daemon is providing any specific failure message, that should be listed along with statistics that indicate to the service manager that it is failing. 
-            - For example, if we know a daemon has timed out, we could clear the data for that service to see if it times out again before stopping/restarting. 
-            - Pseudo-rust example of how this is checked: 
+            - A daemon marked as not responding if it has been restarted too many times in too short of a time period. If the daemon is providing any specific failure message, that should be listed along with statistics that indicate to the service manager that it is failing.
+            - Rust example of how a service could be checked as unresponsive: 
             ```rust
-            Let response = empty; 
-            Let resopnse_opt = getattr(daemon, “message”) 
-            Let response_thread = thread.spawn({ 
-            //will change response once one from the syscall is ready 
-                response = response_opt.unwrap(); 
-            }); 
-            Let response_timeout = thread.spawn({ 
-                timer.delay(TIMEOUT_CONSTANT); 
-                While timer.waiting && response.is_empty{ 
-                timeout(dameon, true) 
-                } 
-                If timer.waiting { 
-                timeout(daemon, false) 
-                //record response time 
-                } 
-            }); 
-
-            response_timeout.join 
-            singal::kill(response_thread) // if still running 
-            // we may have to change how the response thread behaves depending on how getattr/setattr is encapsulated in it’s own thread 
-            // we can now move forward with the response data, or handle a service timeout like described above 
+            let (sender, receiver) = mpsc::channel();
+            let t = thread::spawn(move || {
+                match sender.send(Ok(read(fd, read_buffer))) {
+                    Ok(()) => {}, // everything good
+                    Err(_) => {}, // we have been released, don't panic
+                }
+            });
+            // this line will block until the read is complete or 5 seconds has passed, whichever comes first.
+            let result = receiver.recv_timeout(Duration::from_millis(5000));
             ```
-            - Review “APIs and message flows” for specifics on how to implement this 
+            - This timeout code can be used with the open, read, write, & dup syscalls in helper functions of the service monitor to prevent the calls from hanging and consequently hanging the service monitor. If the reciever times out then it will return an error to the result and the daemon should be marked as not responding, kill the process and mark it as not running.
+            - This does leave a question open on if we are unable to open and read the pid from a service we just started then should we assume it failed to start?
+            - more info [in the rust docs](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html).
  3. **services clear <daemon_name>:**
 - Clear short-term stats for <daemon_name>. 
     - A user could clear short term stats and monitor for unusual changes (say a process is not using io when it normally should) This change in short term info can then be used to determine issues with the daemon A similar flow will be implemented as an automated part of the service manager. 
@@ -300,3 +289,4 @@ scheme_path = "/scheme/<service>"
 - Which daemons need what information from the Kernel, what syscall? 
 - What happens when a service is not responding that has dependent services still running? 
 - How do permissions/security on the API work? 
+- if we are unable to open and read the pid from a service we just started then should we assume it failed to start?
