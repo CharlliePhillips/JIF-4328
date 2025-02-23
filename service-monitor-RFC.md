@@ -34,15 +34,23 @@ A separate program with the name “services” will parse the arguments passed 
     - lists all registered daemons, their current status/message string, pid, and uptime. 
     - How to list running vs not running services? 
     should show something kinda like this in the CLI:
-```
-name | pid | uptime | message
+    ```
+    name | pid | uptime | message | state
+    
+    gtrand | 85 | 3m 40s | “<random num>” | RUNNING
+    ```
+    - If a daemon is stopped or otherwise not responding:
+    ```
+    name | pid | uptime | message | state
 
-gtrand | 85 | 3m 40s | “gtrand message: <random no>”
+    gtrand2 | N/A | N/A | N/A | STOPPED 
+    ```
+    - If a service has been restarted then that should be indicated when requesting information from the service in the CLI, this example shows a service that was restarted 4 minutes and 43 seconds ago.
+    ```
+    name | pid | uptime | message | state
 
-also look at ‘ps’ command for inspo
-```
-
-
+    gtrand2 | 88 | 4m 43s | "<random num>" | RESTARTED
+    ```
 2. **services info <daemon_name>:** 
     - list the current status, info, and uptime for <daemon_name>  
         - Uptime – difference between the current time and the start time that the daemon has recorded. 
@@ -50,24 +58,51 @@ also look at ‘ps’ command for inspo
         - Total number of requests (read/write) as well as # since last clear 
         - Scheme size 
         - Total # of errors logged 
-        - Last response time – The last time that the daemon was responsive for timeouts. 
+        - Last response time – The last time that the daemon was responsive for timeouts.
+        - **example:**
+        ```
+        user:~$services info gtrand
+        Service: gtrand
+        Uptime: 0 hours, 0 minutes, 35.923 seconds
+        Last time to initialize: 0 minutes, 0.404 seconds
+        Read count: 13
+        Write count: 42
+        Open count: 2
+        Close count: 1
+        Dup count: 2
+        Error count: 0
+        Message: "randum no: -1742356297751"
+        user:~$
+        ``` 
     - **What info shows if a daemon is not responding?**
-        - If a daemon is not responding: 
-            - A daemon marked as not responding if it has been restarted too many times in too short of a time period. If the daemon is providing any specific failure message, that should be listed along with statistics that indicate to the service manager that it is failing.
+        - If a daemon is stopped or otherwise not responding:
+            `service "<service_name>" is stopped!`
+            - The service monitor will store the current state of each service as an enum `RUNNING`, `STOPPED`, `RESTARTED`. When the service monitor starts a service, or clears the data on a service marked as `RESTARTED` it will be put in the `RUNNING` state. 
+            - If the service has been stopped or otherwise becomes unresponsive it will be marked as being in the `STOPPED` state and will not be started again unless the service monitor recieves an external request to restart it.
+            - If a service has been restarted then that should be indicated when requesting information from the service in the CLI, this example shows a service that was restarted 4 minutes and 43 seconds ago.
+            ```
+            user:~$services info gtrand2
+            Service: gtrand2
+            RESTARTED!
+            Uptime: 0 hours, 4 minutes, 43.000 seconds
+            Last time to initialize: 0 minutes, 0.212 seconds
+            ... // see example above for other info
+            ``` 
+            - If the daemon is providing any specific failure message, that should be listed along with statistics that indicate to the service manager that it is failing.
             - Rust example of how a service could be checked as unresponsive: 
             ```rust
             let (sender, receiver) = mpsc::channel();
             let t = thread::spawn(move || {
                 match sender.send(Ok(read(fd, read_buffer))) {
                     Ok(()) => {}, // everything good
-                    Err(_) => {}, // we have been released, don't panic
+                    Err(_) => {}, // sender has been released, don't panic
                 }
             });
             // this line will block until the read is complete or 5 seconds has passed, whichever comes first.
             let result = receiver.recv_timeout(Duration::from_millis(5000));
             ```
             - This timeout code can be used with the open, read, write, & dup syscalls in helper functions of the service monitor to prevent the calls from hanging and consequently hanging the service monitor. If the reciever times out then it will return an error attempt to restart it.
-            - If it is restarted then the restart time is recorded by service monitor, if we attempt to restart this service again within 5 seconds of this recorded time then the service is marked as unresponsive. An unresponsive service will be 
+            - If it is restarted then the restart time is recorded by service monitor, if we attempt to restart this service again within 5 seconds of this recorded time then the service is marked as unresponsive. An unresponsive service will have the state `STOPPED` and will not be restarted.
             - This does leave a question open on if we are unable to open and read the pid from a service we just started then should we assume it failed to start?
             - more info [in the rust docs](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html).
  3. **services clear <daemon_name>:**
@@ -89,17 +124,12 @@ also look at ‘ps’ command for inspo
         setattr(service.as_raw_fd, “stop”, 1) 
 
         // wait for daemon to try nicely then try harder 
-
         If getattr(service.as_raw_fd, “active”) { 
-
             signal::kill(<daemon PID>, Signal::SIGHUP).unwrap(); 
-
         } 
 
         // wait again 
-
         If getattr(service.as_raw_fd, “active”) { 
-
             signal::kill(<daemon PID>, Signal::SIGKILL).unwrap();
         }
         ```
@@ -211,6 +241,8 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 
 ### Command Line & Service Monitor API 
 - The command line application described above will have corresponding API calls to the Service Monitor daemon that could also be called by future OS components. These are accessed by using the `write` syscall to make a request to the service monitor and `read` to read a response.
+- When the service monitor recieves a request from the `write` call it will place the appropriate `service-monitor::CMD` enum into it's scheme. Inside of the service-monitor's main loop, the `eval_cmd()` function is called, which matches the command enum to it's cooresponding function and passes any associated data (arguments) along with the funciton call.
+- Each function handling an API command will write data to a vector of bytes in the service-monitor scheme. When `read` is called on the service-monitor next, the requested command's vector is written to the buffer passed in the read call if applicable (if the API call return value needs more than a single usize).
 
 ### Service Start (legacy/old-style daemons) 
 - Use rust standard library to build a command that starts the daemon. Once it is started, the Service Manager does not need to do anything. 
