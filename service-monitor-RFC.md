@@ -116,7 +116,9 @@ Clear short-term stats for <daemon_name>.
     - Restart and Restore: 
         - Adding the `-restart` argument stops a registered service and then starts it. Long term data from a managed daemon scheme should be recorded. Some services require information from the kernel to be started in the correct state after Redox has booted. For these services use the argument `–restore`. Ex: `services stop –restore <daemon_name>`
 6. **services register <daemon_name> args=[]:** 
-    - Adds an entry for a daemon into the list of managed services, it will be started by the SM with the command line args specified in the array. To manually register an old-style daemon for the SM to start but ignore (i.e. use the SM as init), a user could enter the command `services register –o <daemon_name> args=[]` where the application path is a valid path to a binary (or the name of one on PATH?). The registry may need additional API calls for editing existing services’ info, we will need to decide if/how this will be controlled by arguments or additional commands. 
+    - Adds an entry for a daemon into the list of managed services, it will be started by the SM with the command line args specified in the array. To manually register an old-style daemon for the SM to start but ignore (i.e. use the SM as init), a user could enter the command `services register –o <daemon_name> args=[]` where the application path is a valid path to a binary (or the name of one on PATH?). The registry may need additional API calls for editing existing services’ info, we will need to decide if/how this will be controlled by arguments or additional commands.
+7. **services** / **services help**
+    - Displays a help page detailing the available commands 
 
 ## APIs and Message Flows 
 #### Managed Service API (new-style daemons)
