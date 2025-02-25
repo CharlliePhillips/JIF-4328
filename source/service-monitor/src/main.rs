@@ -284,7 +284,9 @@ fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     } else {
         warn!("service: '{}' is already running", service.name);
         //test_service_data(service);
-
+        if (service.name == "gtrand2") {
+            test_timeout(service);
+        }
         // When we actually report the total number of reads/writes, it should actually be the total added
         // to whatever the current value in the service is, the toal stored in the service monitor is
         // updated when the service's count is cleared.
@@ -422,9 +424,10 @@ fn test_timeout(gtrand2: &mut ServiceEntry) {
     info!("gtrand 2 timed out!");
 }
 
-fn test_main_read(service: &mut ServiceEntry) -> i64 {
+fn test_count_ops(service: &mut ServiceEntry) -> i64 {
     let read_buf = &mut [b'0';8];
     rHelper(service, read_buf, "");
+    wHelper(service, "", "");
     return i64::from_ne_bytes(*read_buf);
 }
 
