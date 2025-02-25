@@ -28,11 +28,12 @@ use std::collections::BTreeMap;
 use std::num::Wrapping;
 // new lib service_base
 use service_base::BaseScheme;
+use service_base::ManagedScheme;        
 use std::sync::*;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use chrono::Local;
-use std::ops::Deref;        
+use std::ops::Deref;
 
 // This Daemon implements a Cryptographically Secure Random Number Generator
 // that does not block on read - i.e. it is equivalent to linux /dev/urandom
@@ -375,6 +376,20 @@ impl Scheme for RandScheme {
             Some(_) => Ok(0),
             None => Err(Error::new(EBADFD)),
         }
+    }
+}
+
+impl ManagedScheme for RandScheme {
+    fn count_ops(&self) -> bool {
+        return true;
+    }
+
+    fn message(&self) -> Option<&[u8; 32]> {
+        return Some(&[b'B'; 32]);
+    }
+
+    fn shutdown(&mut self) -> bool {
+        return false;
     }
 }
 

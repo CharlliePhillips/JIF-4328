@@ -173,7 +173,7 @@ A separate program with the name “services” will parse the arguments passed 
     - `close` - Checks if the passed id is in the hashmap, if it is then pass the close call to the subscheme. The hashmap entry is removed regardless of if calling close on the subscheme was successful.
     - The other methods in the Scheme trait implementation for BaseScheme (fcntl, fsync, etc.) will forward to calling on the main scheme.
 
-- The main scheme for each service will implement the ManagedScheme trait. This trait will contain a collection of methods used by the BaseScheme trait to track the main scheme's statistics. Each of the managment sub-schemes will also implement ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme.
+- The main scheme for each service will implement the `ManagedScheme` trait. This trait will contain a collection of methods used by the BaseScheme trait to track the main scheme's statistics. Each of the managment sub-schemes will also implement ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme.
     - `count_ops() -> bool`: returns true if file operations (read, write, open, close, & dup) on this scheme should be counted in the BaseScheme statistics
     - `message -> Option<[&u8; 32]>` - Returns an Option containing a new 32 btye status message or None if a new message is not available.
     - `shutdown()` - gracefully stops service, closing open fds, clean up, etc. This is called at an appropriate time in the BaseScheme when ControlScheme.stop is true.

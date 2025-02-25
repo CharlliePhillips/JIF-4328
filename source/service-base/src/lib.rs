@@ -15,8 +15,8 @@ use chrono::Local;
 use std::ops::Deref;
 
 
-type ManagmentSubScheme = Arc<Mutex<Box<dyn Scheme>>>;
-type SubSchemeGuard<'a> = MutexGuard<'a, Box<dyn Scheme>>;
+type ManagmentSubScheme = Arc<Mutex<Box<dyn ManagedScheme>>>;
+type SubSchemeGuard<'a> = MutexGuard<'a, Box<dyn ManagedScheme>>;
 
 struct PidScheme(u64);
 struct RequestsScheme{
@@ -49,7 +49,7 @@ pub struct BaseScheme {
 }
 
 impl BaseScheme {
-    pub fn new(main_scheme: impl Scheme + 'static) -> Self {
+    pub fn new(main_scheme: impl Scheme + 'static + ManagedScheme) -> Self {
         Self {
             main_scheme: Arc::new(Mutex::new(Box::new(main_scheme))),
             pid_scheme: Arc::new(Mutex::new(Box::new(
@@ -199,7 +199,14 @@ impl Scheme for BaseScheme {
     }
     
     fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        self.handler(id)?.read(id, buf, _offset, _flags)
+        let mut subscheme: SubSchemeGuard = self.handler(id)?;
+        let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+        let mut result = subscheme.read(id, buf, _offset, _flags);
+        if (!result.is_err() && subscheme.count_ops()) {
+            managment.request_count.0 += 1;
+            println!("updated read count to: {}", managment.request_count.0);
+        }
+        return result;
     }
 
     fn write(&mut self, id: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
@@ -268,6 +275,7 @@ impl Scheme for BaseScheme {
     }
 }
 
+impl ManagedScheme for PidScheme {}
 impl Scheme for PidScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // get data as byte array
@@ -277,6 +285,8 @@ impl Scheme for PidScheme {
         Ok(buf.len())
     }
 }
+
+impl ManagedScheme for RequestsScheme {}
 impl Scheme for RequestsScheme {
     fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize>{
         if buf == b"clear"{
@@ -301,6 +311,8 @@ impl Scheme for RequestsScheme {
         Ok(buf.len())
     }
 }
+
+impl ManagedScheme for TimeStampScheme {}
 impl Scheme for TimeStampScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let time_stamp = self.0.to_ne_bytes();
@@ -309,6 +321,8 @@ impl Scheme for TimeStampScheme {
         Ok(buf.len())
     }
 }
+
+impl ManagedScheme for MessageScheme {}
 impl Scheme for MessageScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // message is already stored as an array of bytes
@@ -324,6 +338,7 @@ impl Scheme for MessageScheme {
     }
 }
 
+impl ManagedScheme for ControlScheme {}
 impl Scheme for ControlScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // message is already stored as an array of bytes
@@ -417,3 +432,16 @@ impl Managment {
     }
 }
 
+pub trait ManagedScheme: Scheme {
+    fn count_ops(&self) -> bool{
+        return false;
+    }
+
+    fn message(&self) -> Option<&[u8; 32]> {
+        return None;
+    }
+
+    fn shutdown(&mut self) -> bool {
+        return false;
+    }
+}
