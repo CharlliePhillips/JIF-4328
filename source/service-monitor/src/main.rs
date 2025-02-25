@@ -287,8 +287,8 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 
                     // set up the info string
                     let mut info_string = format!(
-                    "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nError count: {} \nMessage: \"{}\" ", 
-                    service.name, uptime_string, time_init_string, service.read_count, service.write_count, service.error_count, service.message);
+                    "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nOpen count: {} \nClose count: {} \nDup count: {} \nError count: {} \nMessage: \"{}\" ", 
+                    service.name, uptime_string, time_init_string, service.read_count, service.write_count, service.open_count, service.close_count, service.dup_count, service.error_count, service.message);
                     //info!("~sm info string: {:#?}", info_string);
 
                     // set the info buffer to the formatted info string
@@ -314,7 +314,7 @@ fn update_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     info!("updating information for: {}", service.name);
 
     let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
-    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+    let read_buffer: &mut [u8] = &mut [b'0'; 40];
 
     let req = b"request_count";
     let time = b"time_stamp";
@@ -333,26 +333,26 @@ fn update_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     //info!("~sm found a data string: {:#?}", message_string);
     service.message = message_string;
 
-    // get and print r/w tuple assume if there is a comma char at index 8 of the read
-    // bytes then assume bytes 0-7 = tuple.0 and 9-16 are tuple.1
+    // get and print read, write, open, close, & dup count, they are successive u64 bytes read from requests subscheme 
     let reqs_scheme = libredox::call::dup(child_scheme, req).expect("could not dup reqs fd");
     libredox::call::read(reqs_scheme, read_buffer);
-    let mut read_int: i64 = 0;
-    let mut write_int: i64 = 0;
-    if read_buffer[8] == b',' {
-        let mut first_int_bytes = [0; 8];
-        let mut second_int_bytes = [0; 8];
-        for mut i in 0..8 {
-            first_int_bytes[i] = read_buffer[i];
-            second_int_bytes[i] = read_buffer[i + 9];
-        }
-        read_int = i64::from_ne_bytes(first_int_bytes);
-        write_int = i64::from_ne_bytes(second_int_bytes);
-        //info!("~sm read requests: {:#?}", read_int);
-        //info!("~sm write requests: {:#?}", write_int);
-    }
-    service.read_count = read_int;
-    service.write_count = write_int;
+    
+    let mut read_bytes: [u8; 8] = [0; 8];
+    let mut write_bytes: [u8; 8] = [0; 8];
+    let mut open_bytes: [u8; 8] = [0; 8];
+    let mut close_bytes: [u8; 8] = [0; 8];
+    let mut dup_bytes: [u8; 8] = [0; 8];
+    read_bytes.clone_from_slice(&read_buffer[0..8]);
+    write_bytes.clone_from_slice(&read_buffer[8..16]);
+    open_bytes.clone_from_slice(&read_buffer[16..24]);
+    close_bytes.clone_from_slice(&read_buffer[24..32]);
+    dup_bytes.clone_from_slice(&read_buffer[32..40]);
+    service.read_count = u64::from_ne_bytes(read_bytes);
+    service.write_count = u64::from_ne_bytes(write_bytes);
+    service.open_count = u64::from_ne_bytes(open_bytes);
+    service.close_count = u64::from_ne_bytes(close_bytes);
+    service.dup_count = u64::from_ne_bytes(dup_bytes);
+
 
     let time_scheme = libredox::call::dup(child_scheme, time).expect("could not dup time fd");
     // set up the read buffer and read from the scheme into it

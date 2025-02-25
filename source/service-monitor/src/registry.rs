@@ -27,16 +27,20 @@ pub struct ServiceEntry {
     pub pid: usize,
     pub time_started: i64,
     pub time_init: i64,
-    pub read_count: i64,
-    pub write_count: i64,
-    pub error_count: i64,
-    pub last_response_time: i64,
-    pub message: String,
+    pub read_count: u64,
+    pub write_count: u64,
+    pub open_count: u64,
+    pub close_count: u64,
+    pub dup_count: u64,
+    pub error_count: u64,
     pub total_reads: u64, 
     pub total_writes: u64,
     pub total_opens: u64,
     pub total_closes: u64,
     pub total_dups: u64,
+    pub last_response_time: i64,
+    pub message: String,
+
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,14 +88,18 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
             time_init: 0,
             read_count: 0,
             write_count: 0,
+            open_count: 0,
+            close_count: 0,
+            dup_count: 0,
             error_count: 0,
-            last_response_time: 0,
-            message: String::new(),
             total_reads: 0, 
             total_writes: 0,
             total_opens: 0,
             total_closes: 0,
             total_dups: 0,
+            last_response_time: 0,
+            message: String::new(),
+
         };
     services.insert(s.name, new_entry);
     }
