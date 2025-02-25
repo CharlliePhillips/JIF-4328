@@ -186,30 +186,47 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 fn update_service_info(service: &mut ServiceEntry) {
     info!("Updating information for: {}", service.name);
 
-    let read_buffer: &mut [u8] = &mut [b'0'; 1024];
+
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
+    let read_buffer: &mut [u8] = &mut [b'0'; 40];
 
     let req = "request_count";
     let time = "time_stamp";
     let message = "message";
 
-    // get and process the read/write request counts
-    rHelper(service, read_buffer, req);
-    let mut read_int: i64 = 0;
-    let mut write_int: i64 = 0;
-    if read_buffer[8] == b',' {
-        let mut first_int_bytes = [0; 8];
-        let mut second_int_bytes = [0; 8];
-        for mut i in 0..8 {
-            first_int_bytes[i] = read_buffer[i];
-            second_int_bytes[i] = read_buffer[i + 9];
-        }
-        read_int = i64::from_ne_bytes(first_int_bytes);
-        write_int = i64::from_ne_bytes(second_int_bytes);
-        //info!("~sm read requests: {:#?}", read_int);
-        //info!("~sm write requests: {:#?}", write_int);
-    }
-    service.read_count = read_int;
-    service.write_count = write_int;
+
+    let message_scheme = libredox::call::dup(child_scheme, message).expect("could not dup message fd");
+    libredox::call::read(message_scheme, read_buffer);
+    // grab the string
+    let mut message_string = match str::from_utf8(&read_buffer){
+        Ok(data) => data,
+        Err(e) => "<data not a valid string>"
+    }.to_string();
+    // change trailing 0 chars into empty string
+    message_string.retain(|c| c != '\0');
+    //info!("~sm found a data string: {:#?}", message_string);
+    service.message = message_string;
+
+    // get and print read, write, open, close, & dup count, they are successive u64 bytes read from requests subscheme 
+    let reqs_scheme = libredox::call::dup(child_scheme, req).expect("could not dup reqs fd");
+    libredox::call::read(reqs_scheme, read_buffer);
+    
+    let mut read_bytes: [u8; 8] = [0; 8];
+    let mut write_bytes: [u8; 8] = [0; 8];
+    let mut open_bytes: [u8; 8] = [0; 8];
+    let mut close_bytes: [u8; 8] = [0; 8];
+    let mut dup_bytes: [u8; 8] = [0; 8];
+    read_bytes.clone_from_slice(&read_buffer[0..8]);
+    write_bytes.clone_from_slice(&read_buffer[8..16]);
+    open_bytes.clone_from_slice(&read_buffer[16..24]);
+    close_bytes.clone_from_slice(&read_buffer[24..32]);
+    dup_bytes.clone_from_slice(&read_buffer[32..40]);
+    service.read_count = u64::from_ne_bytes(read_bytes);
+    service.write_count = u64::from_ne_bytes(write_bytes);
+    service.open_count = u64::from_ne_bytes(open_bytes);
+    service.close_count = u64::from_ne_bytes(close_bytes);
+    service.dup_count = u64::from_ne_bytes(dup_bytes);
+
 
     // get and process the message
     rHelper(service, read_buffer, message);
