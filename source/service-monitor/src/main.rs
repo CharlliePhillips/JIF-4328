@@ -454,6 +454,12 @@ fn test_timeout(gtrand2: &mut ServiceEntry) {
     info!("gtrand 2 timed out!");
 }
 
+fn test_main_read(service: &mut ServiceEntry) -> i64 {
+    let read_buf = &mut [b'0';8];
+    rHelper(service, read_buf, "");
+    return i64::from_ne_bytes(*read_buf);
+}
+
 fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) {
     let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("could not open child/service base scheme");
     if !data.is_empty() {
