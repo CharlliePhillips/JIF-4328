@@ -6,11 +6,13 @@ use syscall::{
     Error, Result, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC, O_CREAT,
     O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY, SchemeMut
 };
-use hashbrown::HashMap;
+
+use zerocopy::IntoBytes;
 use std::num::Wrapping;
 use std::sync::*;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use hashbrown::HashMap;
 use chrono::Local;
 use std::ops::Deref;
 
@@ -111,8 +113,24 @@ impl BaseScheme {
             // clear the control scheme so we know not to update again
             control_lock.write(0, b"cleared", 0, 0);
             return Ok(1);
+        } else if r_buf[0] == 1{
+            // graceful shutdown code will go here.
+            Ok(0)
         } else {
-            return Ok(0);
+            // this is a normal data update.
+            let mut requests_lock = self.requests_scheme.lock().map_err(|err| Error::new(EBADF))?;
+            let managment_lock = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+            let requests_update: &mut [u8;40] = &mut [0;40];
+            for i in 0..7{
+                requests_update[i] = managment_lock.reads.as_bytes()[i];
+                requests_update[i + 8] = managment_lock.writes.as_bytes()[i];
+                requests_update[i + 16] = managment_lock.opens.as_bytes()[i];
+                requests_update[i + 24] = managment_lock.closes.as_bytes()[i];
+                requests_update[i + 32] = managment_lock.dups.as_bytes()[i];
+            }
+            requests_lock.write(0, requests_update, 0, 0);
+            
+            Ok(0)
         }
     }
 }
@@ -126,6 +144,10 @@ impl Scheme for BaseScheme {
         // new ManagmentSubScheme to the list of handlers with that id.
         if let Ok(OpenResult::ThisScheme{number, flags}) = open_res {
             self.handlers.insert(number, self.main_scheme.clone());
+            // should we check that `count_ops()` is true?
+            let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+            managment.opens += 1;
+            
             open_res
         } else {
             // otherwise propogate the result
@@ -136,8 +158,8 @@ impl Scheme for BaseScheme {
     fn dup(&mut self, old_id: usize, buf: &[u8]) -> Result<usize> {
         // check if we have an existing handler for this id
         if self.handlers.contains_key(&old_id) {
-            match buf {
-                // if there is a matching ManagementSubScheme name make a new id/handler for it
+            let mut result = match buf {
+                // if there is a matching ManagmentSubScheme name make a new id/handler for it
                 b"pid" => {
                     let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.pid_scheme.clone());
@@ -192,25 +214,42 @@ impl Scheme for BaseScheme {
                         Err(syscall::Error {errno: EBADF})
                     }
                }
+            };
+            // check to see if we want to record this dup
+            let subscheme: SubSchemeGuard = self.handler(old_id)?;
+            if (!result.is_err() && subscheme.count_ops()) {
+                let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+                managment.dups += 1;
             }
+            // return the result of the match (subscheme dup)
+            return result;
         } else {
             Err(syscall::Error {errno: EBADF})
         }
     }
     
     fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+        // lock the subscheme and managment struct
         let mut subscheme: SubSchemeGuard = self.handler(id)?;
         let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+        // read from the subscheme
         let mut result = subscheme.read(id, buf, _offset, _flags);
+        // if the read did not error and its ManagedScheme impl says so, increment the read counter.
         if (!result.is_err() && subscheme.count_ops()) {
-            managment.request_count.0 += 1;
-            println!("updated read count to: {}", managment.request_count.0);
+            managment.reads += 1;
         }
         return result;
     }
 
     fn write(&mut self, id: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        self.handler(id)?.write(id, buffer, _offset, _flags)
+        let mut subscheme: SubSchemeGuard = self.handler(id)?;
+        let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+
+        let mut result = subscheme.write(id, buffer, _offset, _flags);
+        if (!result.is_err() && subscheme.count_ops()) {
+            managment.writes += 1;
+        }
+        return result;
     }
 
     // TODO: unimplemented BaseScheme functions should pass to the main Scheme instead of just Oking
@@ -256,6 +295,10 @@ impl Scheme for BaseScheme {
             // attempt to close the scheme
             let mut scheme = self.handler(id)?;
             let result = scheme.close(id);
+            if (!result.is_err() && scheme.count_ops()) {
+                let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+                managment.dups += 1;
+            }
             drop(scheme);
             // we want to remove this id from the handlers map regardless close is success.
             // 'scheme' is retrieved from handlers map in 'fn handler()' so we have to drop it in
@@ -295,9 +338,25 @@ impl Scheme for RequestsScheme {
             self.opens = 0;
             self.closes = 0;
             self.dups = 0;
+        } else {
+            let mut read_bytes: [u8; 8] = [0; 8];
+            let mut write_bytes: [u8; 8] = [0; 8];
+            let mut open_bytes: [u8; 8] = [0; 8];
+            let mut close_bytes: [u8; 8] = [0; 8];
+            let mut dup_bytes: [u8; 8] = [0; 8];
+            read_bytes.clone_from_slice(&buf[0..8]);
+            write_bytes.clone_from_slice(&buf[8..16]);
+            open_bytes.clone_from_slice(&buf[16..24]);
+            close_bytes.clone_from_slice(&buf[24..32]);
+            dup_bytes.clone_from_slice(&buf[32..40]);
+            self.reads = u64::from_ne_bytes(read_bytes);
+            self.writes = u64::from_ne_bytes(write_bytes);
+            self.opens = u64::from_ne_bytes(open_bytes);
+            self.closes = u64::from_ne_bytes(close_bytes);
+            self.dups = u64::from_ne_bytes(dup_bytes);
         }
         Ok(buf.len())
-    }
+    } 
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let read_bytes = &self.reads.to_ne_bytes();
         let write_bytes = &self.writes.to_ne_bytes();
@@ -402,7 +461,12 @@ pub struct Managment {
     message: [u8; 32],
     // [0] = read, [1] = write
     // TODO: this should probably get split into 5 integers for read, write, open, close, and dup
-    request_count: (u64, u64),
+    // request_count: (u64, u64),
+    reads: u64, 
+    writes: u64,
+    opens: u64,
+    closes: u64,
+    dups: u64,
 
 }
 
@@ -416,7 +480,12 @@ impl Managment {
             // init timestamp to unix epoch
             time_stamp: 0,
             message: [0;32],
-            request_count: (13, 42),
+           // request_count: (13, 42),
+            reads: 0, 
+            writes: 0,
+            opens: 0,
+            closes: 0,
+            dups: 0,
         }
     }
 
