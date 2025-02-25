@@ -154,7 +154,7 @@ A separate program with the name “services” will parse the arguments passed 
     - `message_scheme` - Holds a 32 byte array of charachters for a human readable status message.
     - `control_scheme` - Holds a bool to indicate if a clear has been requested by the service monitor and another to indicate a graceful shutdown has been requested.
 
-- The each of the BaseScheme sub-schemes wrapped in the type `ManagmentSubScheme`. This type is an alias for `Arc<Mutex<Box<dyn Scheme>>>` which allows different sized structs implementing Scheme to be accessed in a threadsafe way as the same type.
+- The each of the BaseScheme sub-schemes wrapped in the type `ManagmentSubScheme`. This type is an alias for `Arc<Mutex<Box<dyn ManagedScheme>>>` which allows different sized structs implementing Scheme to be accessed in a threadsafe way as the same type.
 
 - BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `ManagmentSubScheme` as it's value. When trying to access a scheme through the BaseScheme a function `handler(id: usize)` is called to get a thread lock on that reference. The scheme's methods can then be called on this mutex guard thanks to Rust's deref trait.
 
@@ -171,7 +171,7 @@ A separate program with the name “services” will parse the arguments passed 
     - `close` - Checks if the passed id is in the hashmap, if it is then pass the close call to the subscheme. The hashmap entry is removed regardless of if calling close on the subscheme was successful.
     - The other methods in the Scheme trait implementation for BaseScheme (fcntl, fsync, etc.) will forward to calling on the main scheme.
 
-- The main scheme for each service will implement the `ManagedScheme` trait. This trait will contain a collection of methods used by the BaseScheme trait to track the main scheme's statistics. Each of the managment sub-schemes will also implement ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme.
+- The main scheme for each service will implement the `ManagedScheme` trait.  This trait will contain a collection of methods used by the BaseScheme trait to track the main scheme's statistics. Each of the managment sub-schemes will also implement ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme. The `ManagedScheme` trait is a subtrait of Scheme so anything trying to implement it must also implement the `Scheme` trait. This allows the `BaseScheme` to call methods from both traits on it's subschemes.
     - `count_ops() -> bool`: returns true if file operations (read, write, open, close, & dup) on this scheme should be counted in the BaseScheme statistics
     - `message -> Option<[&u8; 32]>` - Returns an Option containing a new 32 btye status message or None if a new message is not available.
     - `shutdown()` - gracefully stops service, closing open fds, clean up, etc. This is called at an appropriate time in the BaseScheme when ControlScheme.stop is true.
