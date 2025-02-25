@@ -360,11 +360,16 @@ impl Scheme for RequestsScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let read_bytes = &self.reads.to_ne_bytes();
         let write_bytes = &self.writes.to_ne_bytes();
-        let mut request_count_bytes: [u8; 17] = [b'\0'; 17];
-        request_count_bytes[8] = b',';
+        let open_bytes = &self.opens.to_ne_bytes();
+        let close_bytes = &self.closes.to_ne_bytes();
+        let dup_bytes = &self.dups.to_ne_bytes();
+        let mut request_count_bytes: [u8; 40] = [0; 40];
         for i in 0..8 {
             request_count_bytes[i] = read_bytes[i];
-            request_count_bytes[i + 9] = write_bytes[i];
+            request_count_bytes[i + 8] = write_bytes[i];
+            request_count_bytes[i + 16] = open_bytes[i];
+            request_count_bytes[i + 24] = close_bytes[i];
+            request_count_bytes[i + 32] = dup_bytes[i];
         }
         fill_buffer(buf, &request_count_bytes);
         Ok(buf.len())
