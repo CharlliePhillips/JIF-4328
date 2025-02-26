@@ -145,6 +145,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             // reset the current command value
             sm_scheme.cmd = None;
         },
+<<<<<<< HEAD
         Some(SMCommand::Start { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 info!("Starting '{}'", service.name);
@@ -473,7 +474,8 @@ fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Resul
             if !data.is_empty() {
                 let data_scheme = libredox::call::dup(child_scheme, data.as_bytes())?;
                 libredox::call::close(child_scheme);
-                return libredox::call::read(data_scheme, read_buf);
+                let result = libredox::call::read(data_scheme, read_buf);
+                return result;
             } else {
                 let result = libredox::call::read(child_scheme, read_buf);
                 libredox::call::close(child_scheme);
