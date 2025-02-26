@@ -482,14 +482,41 @@ fn test_count_ops(service: &mut ServiceEntry) -> i64 {
     return i64::from_ne_bytes(*read_buf);
 }
 
-fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) {
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("could not open child/service base scheme");
-    if !data.is_empty() {
-        let data_scheme = libredox::call::dup(child_scheme, data.as_bytes()).expect("could not dup fd");
-        libredox::call::read(data_scheme, read_buf).expect("could not read data scheme");
-        libredox::call::close(data_scheme);
-    } else {
-        libredox::call::read(child_scheme, read_buf).expect("could not read child scheme");
+fn test_err(gtrand2: &mut ServiceEntry) {
+    let timeout_req =  "error";
+    wHelper(gtrand2, "", timeout_req);
+    let read_buf = &mut [b'0';32];
+    // for now we expect this to hang, 
+    match rHelper(gtrand2, read_buf,"") {
+        Ok(i) => {
+            // whatever happens here, do nothing, just testing
+            warn!("test error failed!");
+        }
+        Err(e) => {
+            // whatever happens here, do nothing, just testing
+            warn!("test error success!");
+        }
+    }
+}
+
+fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Result<usize>{
+    match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
+        Ok(child_scheme) => {
+            if !data.is_empty() {
+                let data_scheme = libredox::call::dup(child_scheme, data.as_bytes())?;
+                libredox::call::close(child_scheme);
+                let result = libredox::call::read(data_scheme, read_buf);
+                return result;
+            } else {
+                let result = libredox::call::read(child_scheme, read_buf);
+                libredox::call::close(child_scheme);
+                return result;
+            }
+        }
+        // if we failed to open the base scheme
+        _ => {
+            return Err(Error::new(EBADF));
+        }
     }
 }
 
