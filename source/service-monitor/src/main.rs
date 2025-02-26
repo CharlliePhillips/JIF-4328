@@ -1,4 +1,4 @@
-use libredox::{call::{open, read, write}, flag::*};
+use libredox::{call::{open, read, write}, flag::*, error::*, errno::*};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
@@ -12,7 +12,6 @@ use std::sync::mpsc::channel;
 mod scheme;
 mod registry;
 use registry::{read_registry, ServiceEntry};
-
 
 enum GenericData {
     Byte(u8),
@@ -188,7 +187,7 @@ fn update_service_info(service: &mut ServiceEntry) {
 
 
     let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
-    let read_buffer: &mut [u8] = &mut [b'0'; 40];
+    let read_buffer: &mut [u8] = &mut [b'0'; 48];
 
     let req = "request_count";
     let time = "time_stamp";
@@ -216,16 +215,19 @@ fn update_service_info(service: &mut ServiceEntry) {
     let mut open_bytes: [u8; 8] = [0; 8];
     let mut close_bytes: [u8; 8] = [0; 8];
     let mut dup_bytes: [u8; 8] = [0; 8];
+    let mut error_bytes: [u8; 8] = [0; 8];
     read_bytes.clone_from_slice(&read_buffer[0..8]);
     write_bytes.clone_from_slice(&read_buffer[8..16]);
     open_bytes.clone_from_slice(&read_buffer[16..24]);
     close_bytes.clone_from_slice(&read_buffer[24..32]);
     dup_bytes.clone_from_slice(&read_buffer[32..40]);
+    error_bytes.clone_from_slice(&read_buffer[40..48]);
     service.read_count = u64::from_ne_bytes(read_bytes);
     service.write_count = u64::from_ne_bytes(write_bytes);
     service.open_count = u64::from_ne_bytes(open_bytes);
     service.close_count = u64::from_ne_bytes(close_bytes);
     service.dup_count = u64::from_ne_bytes(dup_bytes);
+    service.error_count = u64::from_ne_bytes(error_bytes);
 
 
     // get and process the message
@@ -448,14 +450,40 @@ fn test_count_ops(service: &mut ServiceEntry) -> i64 {
     return i64::from_ne_bytes(*read_buf);
 }
 
-fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) {
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("could not open child/service base scheme");
-    if !data.is_empty() {
-        let data_scheme = libredox::call::dup(child_scheme, data.as_bytes()).expect("could not dup fd");
-        libredox::call::read(data_scheme, read_buf).expect("could not read data scheme");
-        libredox::call::close(data_scheme);
-    } else {
-        libredox::call::read(child_scheme, read_buf).expect("could not read data scheme");
+fn test_err(gtrand2: &mut ServiceEntry) {
+    let timeout_req =  "error";
+    wHelper(gtrand2, "", timeout_req);
+    let read_buf = &mut [b'0';32];
+    // for now we expect this to hang, 
+    match rHelper(gtrand2, read_buf,"") {
+        Ok(i) => {
+            // whatever happens here, do nothing, just testing
+            warn!("test error failed!");
+        }
+        Err(e) => {
+            // whatever happens here, do nothing, just testing
+            warn!("test error success!");
+        }
+    }
+}
+
+fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Result<usize>{
+    match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
+        Ok(child_scheme) => {
+            if !data.is_empty() {
+                let data_scheme = libredox::call::dup(child_scheme, data.as_bytes())?;
+                libredox::call::close(child_scheme);
+                return libredox::call::read(data_scheme, read_buf);
+            } else {
+                let result = libredox::call::read(child_scheme, read_buf);
+                libredox::call::close(child_scheme);
+                return result;
+            }
+        }
+        // if we failed to open the base scheme
+        _ => {
+            return Err(Error::new(EBADF));
+        }
     }
 }
 
