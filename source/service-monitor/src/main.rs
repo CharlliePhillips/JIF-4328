@@ -204,7 +204,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     // When we actually report the total number of reads/writes, it should actually be the total added
                     // to whatever the current value in the service is, the toal stored in the service monitor is
                     // updated when the service's count is cleared.
-                    info!("total reads: {}, total writes: {}", service.total_reads, service.total_writes);
                 }
             } else {
                 warn!("start failed: no service named '{}'", sm_scheme.arg1);
@@ -452,7 +451,8 @@ fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Resul
             if !data.is_empty() {
                 let data_scheme = libredox::call::dup(child_scheme, data.as_bytes())?;
                 libredox::call::close(child_scheme);
-                return libredox::call::read(data_scheme, read_buf);
+                let result = libredox::call::read(data_scheme, read_buf);
+                return result;
             } else {
                 let result = libredox::call::read(child_scheme, read_buf);
                 libredox::call::close(child_scheme);

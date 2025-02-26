@@ -145,15 +145,17 @@ impl Scheme for BaseScheme {
         let open_res = main_lock.xopen(path, flags, caller); 
         // if we successfully open the main scheme and get ThisScheme{id,flags} then add a
         // new ManagmentSubScheme to the list of handlers with that id.
+        let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
         if let Ok(OpenResult::ThisScheme{number, flags}) = open_res {
             self.handlers.insert(number, self.main_scheme.clone());
             // should we check that `count_ops()` is true?
-            let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
             managment.opens += 1;
             
             open_res
         } else {
             // otherwise propogate the result
+            // how should errors be handled here? do we count them even if we get OpenResult::OtherScheme?
+            managment.errors += 1;
             open_res
         }
     }
