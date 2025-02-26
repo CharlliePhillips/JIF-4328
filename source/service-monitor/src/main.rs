@@ -167,10 +167,12 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             // reset the current command value
             sm_scheme.cmd = None;
         },
+<<<<<<< HEAD
         Some(SMCommand::Info { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 info!("Finding information for '{}'", service.name);
                 info(service, sm_scheme);
+
             } else {
                 warn!("info failed: no service named '{}'", service_name);
                 // reset the current command value
@@ -439,24 +441,29 @@ fn clear(service: &mut ServiceEntry) {
     let reqs_scheme = libredox::call::dup(child_scheme, b"request_count").expect("couldn't get request_count");
     
     // read the requests into a buffer
-    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+    let read_buffer: &mut [u8] = &mut [b'0'; 48];
     libredox::call::read(reqs_scheme, read_buffer);
 
     // turn that buffer into read/write as integers
-    if read_buffer[8] == b',' {
-        let mut first_int_bytes = [0; 8];
-        let mut second_int_bytes = [0; 8];
-        for mut i in 0..8 {
-            first_int_bytes[i] = read_buffer[i];
-            second_int_bytes[i] = read_buffer[i + 9];
-        }
-        let first_int = u64::from_ne_bytes(first_int_bytes);
-        let second_int = u64::from_ne_bytes(second_int_bytes);
-
-        // count this for our service's total
-        service.total_reads += first_int;
-        service.total_writes += second_int;
-    }
+    let mut read_bytes: [u8; 8] = [0; 8];
+    let mut write_bytes: [u8; 8] = [0; 8];
+    let mut open_bytes: [u8; 8] = [0; 8];
+    let mut close_bytes: [u8; 8] = [0; 8];
+    let mut dup_bytes: [u8; 8] = [0; 8];
+    let mut error_bytes: [u8; 8] = [0; 8];
+    read_bytes.clone_from_slice(&read_buffer[0..8]);
+    write_bytes.clone_from_slice(&read_buffer[8..16]);
+    open_bytes.clone_from_slice(&read_buffer[16..24]);
+    close_bytes.clone_from_slice(&read_buffer[24..32]);
+    dup_bytes.clone_from_slice(&read_buffer[32..40]);
+    error_bytes.clone_from_slice(&read_buffer[40..48]);
+    // count this for our service's totals
+    service.total_reads += u64::from_ne_bytes(read_bytes);
+    service.total_writes += u64::from_ne_bytes(write_bytes);
+    service.total_opens += u64::from_ne_bytes(open_bytes);
+    service.total_closes += u64::from_ne_bytes(close_bytes);
+    service.total_dups += u64::from_ne_bytes(dup_bytes);
+    service.total_errors += u64::from_ne_bytes(error_bytes);
 
     // clear the data and close the schemes.            
     libredox::call::write(cntl_scheme, b"clear").expect("could not write to cntl");

@@ -39,6 +39,7 @@ pub struct ServiceEntry {
     pub total_opens: u64,
     pub total_closes: u64,
     pub total_dups: u64,
+    pub total_errors: u64,
     pub last_response_time: i64,
     pub message: String,
 
@@ -98,6 +99,7 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
             total_opens: 0,
             total_closes: 0,
             total_dups: 0,
+            total_errors: 0,
             last_response_time: 0,
             message: String::new(),
 
