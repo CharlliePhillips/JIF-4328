@@ -27,6 +27,7 @@ struct RequestsScheme{
     opens: u64,
     closes: u64,
     dups: u64,
+    errors: u64,
 }
 struct TimeStampScheme(i64);
 struct MessageScheme([u8;32]);
@@ -61,11 +62,12 @@ impl BaseScheme {
             requests_scheme: Arc::new(Mutex::new(Box::new(
                     RequestsScheme{
                         // these should all actually start at 0 but setting values for clear function testing
-                        reads: 13,
-                        writes: 42,
-                        opens: 32,
-                        closes: 16,
-                        dups: 8,
+                        reads: 0,
+                        writes: 0,
+                        opens: 0,
+                        closes: 0,
+                        dups: 0,
+                        errors: 0,
                     }
                 ))),
             time_stamp_scheme: Arc::new(Mutex::new(Box::new(
@@ -120,13 +122,14 @@ impl BaseScheme {
             // this is a normal data update.
             let mut requests_lock = self.requests_scheme.lock().map_err(|err| Error::new(EBADF))?;
             let managment_lock = self.managment.lock().map_err(|err| Error::new(EBADF))?;
-            let requests_update: &mut [u8;40] = &mut [0;40];
+            let requests_update: &mut [u8;48] = &mut [0;48];
             for i in 0..7{
                 requests_update[i] = managment_lock.reads.as_bytes()[i];
                 requests_update[i + 8] = managment_lock.writes.as_bytes()[i];
                 requests_update[i + 16] = managment_lock.opens.as_bytes()[i];
                 requests_update[i + 24] = managment_lock.closes.as_bytes()[i];
                 requests_update[i + 32] = managment_lock.dups.as_bytes()[i];
+                requests_update[i + 40] = managment_lock.errors.as_bytes()[i];
             }
             requests_lock.write(0, requests_update, 0, 0);
             
@@ -217,9 +220,11 @@ impl Scheme for BaseScheme {
             };
             // check to see if we want to record this dup
             let subscheme: SubSchemeGuard = self.handler(old_id)?;
+            let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
             if (!result.is_err() && subscheme.count_ops()) {
-                let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
                 managment.dups += 1;
+            } else if (subscheme.count_ops()) {
+                managment.errors += 1;
             }
             // return the result of the match (subscheme dup)
             return result;
@@ -235,8 +240,11 @@ impl Scheme for BaseScheme {
         // read from the subscheme
         let mut result = subscheme.read(id, buf, _offset, _flags);
         // if the read did not error and its ManagedScheme impl says so, increment the read counter.
+        println!("result is: {:#?}", result);
         if (!result.is_err() && subscheme.count_ops()) {
             managment.reads += 1;
+        } else if (subscheme.count_ops()) {
+            managment.errors += 1;
         }
         return result;
     }
@@ -248,7 +256,9 @@ impl Scheme for BaseScheme {
         let mut result = subscheme.write(id, buffer, _offset, _flags);
         if (!result.is_err() && subscheme.count_ops()) {
             managment.writes += 1;
-        }
+        } else if (subscheme.count_ops()) {
+            managment.errors += 1;
+        } 
         return result;
     }
 
@@ -295,10 +305,12 @@ impl Scheme for BaseScheme {
             // attempt to close the scheme
             let mut scheme = self.handler(id)?;
             let result = scheme.close(id);
+            let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
             if (!result.is_err() && scheme.count_ops()) {
-                let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
                 managment.dups += 1;
-            }
+            } else if (result.is_err() && scheme.count_ops()) {
+                managment.errors += 1;
+            } 
             drop(scheme);
             // we want to remove this id from the handlers map regardless close is success.
             // 'scheme' is retrieved from handlers map in 'fn handler()' so we have to drop it in
@@ -338,22 +350,26 @@ impl Scheme for RequestsScheme {
             self.opens = 0;
             self.closes = 0;
             self.dups = 0;
+            self.errors = 0;
         } else {
             let mut read_bytes: [u8; 8] = [0; 8];
             let mut write_bytes: [u8; 8] = [0; 8];
             let mut open_bytes: [u8; 8] = [0; 8];
             let mut close_bytes: [u8; 8] = [0; 8];
             let mut dup_bytes: [u8; 8] = [0; 8];
+            let mut error_bytes: [u8; 8] = [0; 8];
             read_bytes.clone_from_slice(&buf[0..8]);
             write_bytes.clone_from_slice(&buf[8..16]);
             open_bytes.clone_from_slice(&buf[16..24]);
             close_bytes.clone_from_slice(&buf[24..32]);
             dup_bytes.clone_from_slice(&buf[32..40]);
+            error_bytes.clone_from_slice(&buf[40..48]);
             self.reads = u64::from_ne_bytes(read_bytes);
             self.writes = u64::from_ne_bytes(write_bytes);
             self.opens = u64::from_ne_bytes(open_bytes);
             self.closes = u64::from_ne_bytes(close_bytes);
             self.dups = u64::from_ne_bytes(dup_bytes);
+            self.errors = u64::from_ne_bytes(error_bytes);
         }
         Ok(buf.len())
     } 
@@ -363,13 +379,15 @@ impl Scheme for RequestsScheme {
         let open_bytes = &self.opens.to_ne_bytes();
         let close_bytes = &self.closes.to_ne_bytes();
         let dup_bytes = &self.dups.to_ne_bytes();
-        let mut request_count_bytes: [u8; 40] = [0; 40];
+        let error_bytes = &self.errors.to_ne_bytes();
+        let mut request_count_bytes: [u8; 48] = [0; 48];
         for i in 0..8 {
             request_count_bytes[i] = read_bytes[i];
             request_count_bytes[i + 8] = write_bytes[i];
             request_count_bytes[i + 16] = open_bytes[i];
             request_count_bytes[i + 24] = close_bytes[i];
             request_count_bytes[i + 32] = dup_bytes[i];
+            request_count_bytes[i + 40] = error_bytes[i];
         }
         fill_buffer(buf, &request_count_bytes);
         Ok(buf.len())
@@ -472,6 +490,7 @@ pub struct Managment {
     opens: u64,
     closes: u64,
     dups: u64,
+    errors: u64,
 
 }
 
@@ -491,6 +510,7 @@ impl Managment {
             opens: 0,
             closes: 0,
             dups: 0,
+            errors: 0,
         }
     }
 

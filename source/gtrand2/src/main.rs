@@ -119,6 +119,7 @@ struct RandScheme {
     // <file number, information about the open file>
     next_fd: Wrapping<usize>,
     timeout: bool,
+    error: bool,
 }
 
 impl RandScheme {
@@ -135,6 +136,7 @@ impl RandScheme {
             open_descriptors: BTreeMap::new(),
             next_fd: Wrapping(0),
             timeout: false,
+            error: false,
         }
     }
 
@@ -289,6 +291,11 @@ impl Scheme for RandScheme {
             // infanite loop to test timeout.
         }
 
+        if (self.error) {
+            println!("ret error");
+            return Err(Error::new(EBADF));
+        }
+
         Ok(buf.len())
     }
 
@@ -296,6 +303,11 @@ impl Scheme for RandScheme {
         // for service monitor timeout testing, if we write "timeout" to gtrand2 then read should also trigger an infinate loop:
         if buf == b"timeout" {
             self.timeout = true;
+        }
+
+        if buf == b"error" {
+            println!("set error");
+            self.error = true;
         }
 
         // Check fd and permissions
