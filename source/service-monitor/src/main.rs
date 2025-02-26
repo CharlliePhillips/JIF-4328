@@ -286,8 +286,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 
                     // set up the info string
                     let mut info_string = format!(
-                    "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nOpen count: {} \nClose count: {} \nDup count: {} \nError count: {} \nMessage: \"{}\" ", 
-                    service.name, uptime_string, time_init_string, service.read_count, service.write_count, service.open_count, service.close_count, service.dup_count, service.error_count, service.message);
+                    "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nTotal reads: {} \nWrite count: {} \nTotal writes: {}\n
+                    Open count: {} \nTotal_opens: {} \nClose count: {} \nTotal closes: {} \nDup count: {} \nTotal dups: {} \nError count: {} \n
+                    Total errors: {} \nMessage: \"{}\" ", 
+                    service.name, uptime_string, time_init_string, service.read_count, service.total_reads + service.read_count, 
+                    service.write_count, service.total_writes + service.write_count, service.open_count, service.total_opens + service.open_count,
+                    service.close_count, service.total_closes + service.close_count, service.dup_count, service.total_dups + service.dup_count,
+                    service.error_count, service.total_errors + service.error_count, service.message);
                     //info!("~sm info string: {:#?}", info_string);
 
                     // set the info buffer to the formatted info string
@@ -385,24 +390,29 @@ fn clear(service: &mut ServiceEntry) {
     let reqs_scheme = libredox::call::dup(child_scheme, b"request_count").expect("couldn't get request_count");
     
     // read the requests into a buffer
-    let read_buffer: &mut [u8] = &mut [b'0'; 32];
+    let read_buffer: &mut [u8] = &mut [b'0'; 48];
     libredox::call::read(reqs_scheme, read_buffer);
 
     // turn that buffer into read/write as integers
-    if read_buffer[8] == b',' {
-        let mut first_int_bytes = [0; 8];
-        let mut second_int_bytes = [0; 8];
-        for mut i in 0..8 {
-            first_int_bytes[i] = read_buffer[i];
-            second_int_bytes[i] = read_buffer[i + 9];
-        }
-        let first_int = u64::from_ne_bytes(first_int_bytes);
-        let second_int = u64::from_ne_bytes(second_int_bytes);
-
-        // count this for our service's total
-        service.total_reads += first_int;
-        service.total_writes += second_int;
-    }
+    let mut read_bytes: [u8; 8] = [0; 8];
+    let mut write_bytes: [u8; 8] = [0; 8];
+    let mut open_bytes: [u8; 8] = [0; 8];
+    let mut close_bytes: [u8; 8] = [0; 8];
+    let mut dup_bytes: [u8; 8] = [0; 8];
+    let mut error_bytes: [u8; 8] = [0; 8];
+    read_bytes.clone_from_slice(&read_buffer[0..8]);
+    write_bytes.clone_from_slice(&read_buffer[8..16]);
+    open_bytes.clone_from_slice(&read_buffer[16..24]);
+    close_bytes.clone_from_slice(&read_buffer[24..32]);
+    dup_bytes.clone_from_slice(&read_buffer[32..40]);
+    error_bytes.clone_from_slice(&read_buffer[40..48]);
+    // count this for our service's totals
+    service.total_reads += u64::from_ne_bytes(read_bytes);
+    service.total_writes += u64::from_ne_bytes(write_bytes);
+    service.total_opens += u64::from_ne_bytes(open_bytes);
+    service.total_closes += u64::from_ne_bytes(close_bytes);
+    service.total_dups += u64::from_ne_bytes(dup_bytes);
+    service.total_errors += u64::from_ne_bytes(error_bytes);
 
     // clear the data and close the schemes.            
     libredox::call::write(cntl_scheme, b"clear").expect("could not write to cntl");
