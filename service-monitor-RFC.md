@@ -147,7 +147,7 @@ A separate program with the name “services” will parse the arguments passed 
 
 ## APIs and Message Flows 
 #### Managed Service API (new-style daemons)
-- Each managed service will have it's main/primary scheme attached to a `BaseScheme` containing several sub-schemes that hold managment data. The BaseScheme will present the main/primary scheme the same way it would be accesed if it was not managed. Data from these managment schemes can be accessed by calling `dup(...)` on the service's scheme with the managment scheme named, and then `read(...)` or `write(..)` on the resulting file descriptor.
+- Each managed service will have it's main/primary scheme attached to a `BaseScheme` containing several sub-schemes that hold management data. The BaseScheme will present the main/primary scheme the same way it would be accesed if it was not managed. Data from these management schemes can be accessed by calling `dup(...)` on the service's scheme with the management scheme named, and then `read(...)` or `write(..)` on the resulting file descriptor.
 
 - The sub-schemes of BaseScheme are:
     - `main_scheme` - The primary scheme for the service, or the one that is pre-existing for an old-style daemon being converted to a managed one.
@@ -168,14 +168,14 @@ A separate program with the name “services” will parse the arguments passed 
         - **Read:** Fills the buffer with 2 bytes, the first being the value of `bool stop` (0 for false 1 for true) indicating that a service has had a graceful `shutdown()` requested. The second byte is `bool clear` indicating that the service-monitor requested for the stats given by request scheme to be reset.
         - **Write:** Reads the passed buffer for an ASCII byte string. If the buffer is `"clear"` then `bool clear` is set to true, and if the buffer is `"cleared"` then it set to false. These are used by the service-monitor to clear the statistics, and BaseScheme to indicate that the clearing code is finished respectively. If the buffer is `"stop"` then `bool stop` is set to false.
 
-- The each of the BaseScheme sub-schemes wrapped in the type `ManagmentSubScheme`. This type is an alias for `Arc<Mutex<Box<dyn ManagedScheme>>>` which allows different sized structs implementing Scheme to be accessed in a threadsafe way as the same type.
+- The each of the BaseScheme sub-schemes wrapped in the type `managementSubScheme`. This type is an alias for `Arc<Mutex<Box<dyn ManagedScheme>>>` which allows different sized structs implementing Scheme to be accessed in a threadsafe way as the same type.
 
 - The BaseScheme implements the following methods from Scheme:
     - `xopen` - Opens the main scheme and adds the new fd and a clone of the arc-mutex containing the scheme to the hash-map of handlers.
     - `dup` - 
         1. If the hash-map does contain the id passed as key then return `EBADF`.
         2. If the map does contain the key and nothing is passed on the buffer then the dup call is forwarded to the main scheme to get a new id to be added to the hashmap. 
-        3. If the buffer contains the name of a managment scheme then a new id is assigned for that scheme and added to the hash-map. 
+        3. If the buffer contains the name of a management scheme then a new id is assigned for that scheme and added to the hash-map. 
         4. If the id passed is recognized but the information on the buffer is not then the scheme associated with that id is forwarded the dup call and the new id from that is added to the map.
         5. The new id is wrapped in Result and returned
     - `read` - Gets the handler associated with the passed id using `handle()` and passes the read call to that scheme. If the handler belongs to the main scheme then this acess will be counted.
@@ -185,18 +185,18 @@ A separate program with the name “services” will parse the arguments passed 
 
 - Each of the sub-schemes will implement the `ManagedScheme` trait. This trait will contain a collection of methods used by the BaseScheme's methods to track the main scheme's statistics. 
     - The main scheme of `BaseScheme` is intended to define it's own implementation of `ManagedScheme` too accomodate any service specific behavior.
-    - Each of the managment sub-schemes will use the default implementation of ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme.
+    - Each of the management sub-schemes will use the default implementation of ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme.
     - The `ManagedScheme` trait is a subtrait of Scheme so anything that implements it must also implement the `Scheme` trait. This allows the `BaseScheme` to call methods from both traits on it's subschemes.
     - The methods on a `ManagedScheme` are:
         - `count_ops() -> bool`: Returns true if file operations (read, write, open, close, & dup) on this scheme should be counted in the BaseScheme statistics. **Default:** return false.
 
         - `shutdown() -> bool` - Gracefully stops service, closing open fds, clean up, etc. This is called at an appropriate time in the BaseScheme when ControlScheme.stop is true. Returns true if successful. **Default:** return false.
 
-- BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `ManagmentSubScheme` as it's value. When trying to access a scheme through the BaseScheme the method `handler(id: usize)` is called to get a thread lock on that reference.
+- BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `managementSubScheme` as it's value. When trying to access a scheme through the BaseScheme the method `handler(id: usize)` is called to get a thread lock on that reference.
 
-- The BaseScheme also contains a managment structure wrapped in an arc mutex. This managment structure contains the recorded statistics for a particular service
+- The BaseScheme also contains a management structure wrapped in an arc mutex. This management structure contains the recorded statistics for a particular service
 ```rust
-pub struct Managment {
+pub struct management {
     pid: usize,
     time_stamp: i64,
     message: [u8; 32],
@@ -211,12 +211,12 @@ pub struct Managment {
 - The `BaseScheme` implements these methods:
     - `new(main_scheme: impl Scheme + 'static + ManagedScheme)` Takes the main scheme as an argument. Anything implementing Scheme and Managed scheme can be passed to this method and it will live for as long as the `BaseScheme` object.
     - `handler(&self, id: usize) -> Result<SubSchemeGuard>` Takes a usize id which cooresponds to a key in the handlers hash-map and returns a mutex guard for the sub-scheme with that id. The scheme's methods can then be called in a thread safe way on this mutex guard thanks to Rust's deref trait.
-    - `update(&self) -> Result<usize>` This is called each time `handler()` is to make sure that each time a sub-scheme is accessed, it has the most up-to-date data from the managment struct. This includes the file op statistics, message, and resetting the control struct after the statistics have been cleared.
+    - `update(&self) -> Result<usize>` This is called each time `handler()` is to make sure that each time a sub-scheme is accessed, it has the most up-to-date data from the management struct. This includes the file op statistics, message, and resetting the control struct after the statistics have been cleared.
     - `message(&self, message: String)` This is called within a daemon implementing `ManagedScheme` to update the message contained in the `message_scheme`. The `String` message is truncated to 32 bytes to fit inside of the scheme.
-- **Note:** for main schemes implementing the SchemeBlock trait a different BaseScheme and Managment struct will be neccecary for tracking things such as delay time. SchemeBlock allows IO calls to take their time to complete for handling things like drive access. This kind of flow would appear to be an error for the standard BaseScheme.
+- **Note:** for main schemes implementing the SchemeBlock trait a different BaseScheme and management struct will be neccecary for tracking things such as delay time. SchemeBlock allows IO calls to take their time to complete for handling things like drive access. This kind of flow would appear to be an error for the standard BaseScheme.
 
 ### Service Status, Failure Detection & Recovery
-- Each service/daemon in redox has a scheme associated with it where data is stored. This scheme can be accessed as a file with the `open` syscall when passed the correct path. The file descriptor from a fully managed service can be passed to the `dup` syscall along with a byte array containing the name of the desired managment data in order to get a file descriptor pointing to that data. 
+- Each service/daemon in redox has a scheme associated with it where data is stored. This scheme can be accessed as a file with the `open` syscall when passed the correct path. The file descriptor from a fully managed service can be passed to the `dup` syscall along with a byte array containing the name of the desired management data in order to get a file descriptor pointing to that data. 
 ex:
 ```rust
 let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open chld scheme");
@@ -230,7 +230,7 @@ if let Ok(pid_scheme) = libredox::call::dup(child_scheme, b"pid") {
 
 - While getattr and setattr are still in development the service monitor will use the `read` syscall on a file descriptor pointing to a scheme containing the desired data. When the service recieves this request it finds the scheme associated with that fd and transparently calls read on that particular scheme. The requested data is written to the buffer passed to read for processing. 
 
-- The `write` syscall can be used to modify particular managment sub-schemes.
+- The `write` syscall can be used to modify particular management sub-schemes.
 ex:
 ```rust
 let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open chld scheme");
@@ -312,7 +312,7 @@ scheme_path = "/scheme/<service>"
 
 3. **API**
     - An API will be provided to the Service Monitor via `read` and `write` on it’s scheme (until get and setattr are ready). Calls when implemented will retrieve information recorded in the Running loop for whatever is program is calling them, or trigger the Service Monitor to start/kill a service. This API will allow code to be triggered by the getattr/setattr syscalls from other applications.
-    - A managment API will be provided for each managed scheme through a `BaseScheme`. This struct holds the primary scheme for the service as well as several others containg the data needed for the service monitor. The `read` and `write` syscalls will be used to access these sub-schemes until `getattr` and `setattr` are ready. The primary scheme will be accessable through the BaseScheme using the same convention as a non-managee scheme to ensure compatibility with existing code.
+    - A management API will be provided for each managed scheme through a `BaseScheme`. This struct holds the primary scheme for the service as well as several others containg the data needed for the service monitor. The `read` and `write` syscalls will be used to access these sub-schemes until `getattr` and `setattr` are ready. The primary scheme will be accessable through the BaseScheme using the same convention as a non-managee scheme to ensure compatibility with existing code.
 
 4. **CLI**
     - A relatively simple program to serve as the user interface that parses command line arguments and makes the corresponding getattr/setattr calls to the Service Monitor API. It then will take any information from the Service Monitor and format it to be printed for the user. 
@@ -334,7 +334,7 @@ scheme_path = "/scheme/<service>"
 - Any remaining common protocols and device specific protocols 
 - Should the Device Discovery remove formerly discovered services or manually added services that aren’t found for stability? 
 - What happens when a discovered service exists in the registry but the parameters discovered are different then those in the registry, update? Will we need an additional flag in the registry for manual override of this update? 
-- Should a file descriptor for the child's BaseScheme be recorded, the base scheme and managment descriptors? Or should the service monitor open and close file descriptors as it runs.
+- Should a file descriptor for the child's BaseScheme be recorded, the base scheme and management descriptors? Or should the service monitor open and close file descriptors as it runs.
 - Thread safe function wrappers for getattr/setattr. One thread monitoring all wrappers or a monitor thread for each wrapper? How long, how would a user configure timeout time, should they? 
 - Automatic restart – triggered on faulting daemon. Need to consider how to detect service “bootloop” to prevent dead service hogging resources. 
 - For ‘not responding’  how many times and how short of a time period? Is this something determined by daemon, historic data, arbitrary numbers to be manually tuned for now? 

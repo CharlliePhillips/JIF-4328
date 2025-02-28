@@ -387,7 +387,7 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
         .expect("randd: failed to mark daemon as ready");
 
     libredox::call::setrens(0, 0).expect("randd: failed to enter null namespace");
-    //scheme.managment.start_managment("started gtrand!");
+    //scheme.management.start_management("started gtrand!");
 
     while let Some(request) = socket
         .next_request(SignalBehavior::Restart)
