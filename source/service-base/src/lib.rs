@@ -17,7 +17,7 @@ use chrono::Local;
 use std::ops::Deref;
 
 
-type ManagmentSubScheme = Arc<Mutex<Box<dyn ManagedScheme>>>;
+type managementSubScheme = Arc<Mutex<Box<dyn ManagedScheme>>>;
 type SubSchemeGuard<'a> = MutexGuard<'a, Box<dyn ManagedScheme>>;
 
 struct PidScheme(u64);
@@ -38,17 +38,17 @@ struct ControlScheme{
 }
 
 pub struct BaseScheme {
-    main_scheme: ManagmentSubScheme,
-    pid_scheme: ManagmentSubScheme,
-    requests_scheme: ManagmentSubScheme,
-    time_stamp_scheme: ManagmentSubScheme,
-    message_scheme: ManagmentSubScheme,
-    control_scheme: ManagmentSubScheme,
+    main_scheme: managementSubScheme,
+    pid_scheme: managementSubScheme,
+    requests_scheme: managementSubScheme,
+    time_stamp_scheme: managementSubScheme,
+    message_scheme: managementSubScheme,
+    control_scheme: managementSubScheme,
     // handlers holds a map of the file descriptors/id to
     // the actual scheme object
-    handlers: HashMap<usize, ManagmentSubScheme>,
+    handlers: HashMap<usize, managementSubScheme>,
     next_mgmt_id: AtomicUsize,
-    managment: Arc<Mutex<Managment>>,
+    management: Arc<Mutex<management>>,
 }
 
 impl BaseScheme {
@@ -81,7 +81,7 @@ impl BaseScheme {
                 ))),
             handlers: HashMap::new(),
             next_mgmt_id: 9999.into(),
-            managment: Arc::new(Mutex::new(Managment::new())),
+            management: Arc::new(Mutex::new(management::new())),
         }
     }
 
@@ -121,15 +121,15 @@ impl BaseScheme {
         } else {
             // this is a normal data update.
             let mut requests_lock = self.requests_scheme.lock().map_err(|err| Error::new(EBADF))?;
-            let managment_lock = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+            let management_lock = self.management.lock().map_err(|err| Error::new(EBADF))?;
             let requests_update: &mut [u8;48] = &mut [0;48];
             for i in 0..7{
-                requests_update[i] = managment_lock.reads.as_bytes()[i];
-                requests_update[i + 8] = managment_lock.writes.as_bytes()[i];
-                requests_update[i + 16] = managment_lock.opens.as_bytes()[i];
-                requests_update[i + 24] = managment_lock.closes.as_bytes()[i];
-                requests_update[i + 32] = managment_lock.dups.as_bytes()[i];
-                requests_update[i + 40] = managment_lock.errors.as_bytes()[i];
+                requests_update[i] = management_lock.reads.as_bytes()[i];
+                requests_update[i + 8] = management_lock.writes.as_bytes()[i];
+                requests_update[i + 16] = management_lock.opens.as_bytes()[i];
+                requests_update[i + 24] = management_lock.closes.as_bytes()[i];
+                requests_update[i + 32] = management_lock.dups.as_bytes()[i];
+                requests_update[i + 40] = management_lock.errors.as_bytes()[i];
             }
             requests_lock.write(0, requests_update, 0, 0);
             
@@ -161,18 +161,18 @@ impl Scheme for BaseScheme {
         let mut main_lock = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
         let open_res = main_lock.xopen(path, flags, caller); 
         // if we successfully open the main scheme and get ThisScheme{id,flags} then add a
-        // new ManagmentSubScheme to the list of handlers with that id.
-        let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+        // new managementSubScheme to the list of handlers with that id.
+        let mut management = self.management.lock().map_err(|err| Error::new(EBADF))?;
         if let Ok(OpenResult::ThisScheme{number, flags}) = open_res {
             self.handlers.insert(number, self.main_scheme.clone());
             // should we check that `count_ops()` is true?
-            managment.opens += 1;
+            management.opens += 1;
             
             open_res
         } else {
             // otherwise propogate the result
             // how should errors be handled here? do we count them even if we get OpenResult::OtherScheme?
-            managment.errors += 1;
+            management.errors += 1;
             open_res
         }
     }
@@ -181,7 +181,7 @@ impl Scheme for BaseScheme {
         // check if we have an existing handler for this id
         if self.handlers.contains_key(&old_id) {
             let mut result = match buf {
-                // if there is a matching ManagmentSubScheme name make a new id/handler for it
+                // if there is a matching managementSubScheme name make a new id/handler for it
                 b"pid" => {
                     let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.pid_scheme.clone());
@@ -239,11 +239,11 @@ impl Scheme for BaseScheme {
             };
             // check to see if we want to record this dup
             let subscheme: SubSchemeGuard = self.handler(old_id)?;
-            let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+            let mut management = self.management.lock().map_err(|err| Error::new(EBADF))?;
             if (!result.is_err() && subscheme.count_ops()) {
-                managment.dups += 1;
+                management.dups += 1;
             } else if (subscheme.count_ops()) {
-                managment.errors += 1;
+                management.errors += 1;
             }
             // return the result of the match (subscheme dup)
             return result;
@@ -253,29 +253,29 @@ impl Scheme for BaseScheme {
     }
     
     fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        // lock the subscheme and managment struct
+        // lock the subscheme and management struct
         let mut subscheme: SubSchemeGuard = self.handler(id)?;
-        let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+        let mut management = self.management.lock().map_err(|err| Error::new(EBADF))?;
         // read from the subscheme
         let mut result = subscheme.read(id, buf, _offset, _flags);
         // if the read did not error and its ManagedScheme impl says so, increment the read counter.
         if (!result.is_err() && subscheme.count_ops()) {
-            managment.reads += 1;
+            management.reads += 1;
         } else if (subscheme.count_ops()) {
-            managment.errors += 1;
+            management.errors += 1;
         }
         return result;
     }
 
     fn write(&mut self, id: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         let mut subscheme: SubSchemeGuard = self.handler(id)?;
-        let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+        let mut management = self.management.lock().map_err(|err| Error::new(EBADF))?;
 
         let mut result = subscheme.write(id, buffer, _offset, _flags);
         if (!result.is_err() && subscheme.count_ops()) {
-            managment.writes += 1;
+            management.writes += 1;
         } else if (subscheme.count_ops()) {
-            managment.errors += 1;
+            management.errors += 1;
         } 
         return result;
     }
@@ -323,11 +323,11 @@ impl Scheme for BaseScheme {
             // attempt to close the scheme
             let mut scheme = self.handler(id)?;
             let result = scheme.close(id);
-            let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
+            let mut management = self.management.lock().map_err(|err| Error::new(EBADF))?;
             if (!result.is_err() && scheme.count_ops()) {
-                managment.closes += 1;
+                management.closes += 1;
             } else if (result.is_err() && scheme.count_ops()) {
-                managment.errors += 1;
+                management.errors += 1;
             } 
             drop(scheme);
             // we want to remove this id from the handlers map regardless close is success.
@@ -483,7 +483,7 @@ fn fill_buffer(dest: &mut [u8], src: &[u8]) {
     }
 }
 
-pub struct Managment {
+pub struct management {
     // these bytes will hold data to be read through the scheme this is attached to
     response_buf: [u8; 32],
     // set to true when a request has been written and the scheme is waiting for the response to be read
@@ -504,10 +504,10 @@ pub struct Managment {
 
 }
 
-impl Managment {
+impl management {
     //constructor
-    pub fn new() -> Managment {
-        Managment {
+    pub fn new() -> management {
+        management {
             response_buf: [0;32],
             response_pending: false,
             pid: std::process::id().try_into().unwrap(),
@@ -524,7 +524,7 @@ impl Managment {
         }
     }
 
-    pub fn start_managment(&mut self, message: &str) {
+    pub fn start_management(&mut self, message: &str) {
         self.time_stamp = Local::now().timestamp();
         let mut message_len = message.as_bytes().len();
         if message_len > 32 {
