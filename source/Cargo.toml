@@ -3,4 +3,4 @@ members = [
     "service-monitor",
     "services",
     "gtrand"
-]
+, "shared"]

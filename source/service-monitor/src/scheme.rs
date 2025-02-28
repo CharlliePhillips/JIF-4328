@@ -4,20 +4,15 @@ use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
 use log::info;
 use redox_scheme::Scheme;
 use syscall::{error::*, MODE_CHR};
+use shared::SMCommand;
 
 //use std::fs::File;
 // Ty is to leave room for other types of monitor schemes
 // maybe an int or enum for the command, string buffer for service name?
 
-pub enum Cmd {
-    Start(String),
-    Stop(String),
-    List
-}
-
 
 pub struct SMScheme {
-    pub cmd: Option<Cmd>,
+    pub cmd: Option<SMCommand>,
     pub pid_buffer: Vec<u8>, //used in list, could be better as the BTreeMap from service-monitor later?
 }
 
@@ -47,7 +42,7 @@ impl Scheme for SMScheme {
         //Ok(0)
 
         //info!("Read called with cmd: {}", self.cmd);
-        if matches!(self.cmd, Some(Cmd::List)) {
+        if matches!(self.cmd, Some(SMCommand::List)) {
             let size = std::cmp::min(buf.len(), self.pid_buffer.len());
             buf[..size].copy_from_slice(&self.pid_buffer[..size]);
             info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
@@ -60,46 +55,22 @@ impl Scheme for SMScheme {
 
 
 
-    // currently returns the old hardcoded integer value of the command. do we want to change this?
+    // TODO: currently returns the old hardcoded integer value of the command. do we want to change this?
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         //if buf contains "stop" set command = 1
         let mut r = 0;
         //println!("service-monitor command buffer: {buffer:#?}");
 
-        match &buffer[0..5] {
-            b"stop " => {
-                let mut arg1: String = String::from("");
-                let mut idx: usize = 5;
-                while(buffer[idx] != b';') {
-                    arg1.push(buffer[idx] as char);
-                    idx += 1;
-                }
-                self.cmd = Some(Cmd::Stop(arg1));
-                
-                r = 1;
-            }
+        self.cmd = match SMCommand::from_bytes(buffer) {
+            Ok(cmd) => Some(cmd),
+            Err(_) => None
+        };
 
-            b"start" => {
-                let mut arg1: String = String::from("");
-                let mut idx: usize = 6;
-                while(buffer[idx] != b';') {
-                    arg1.push(buffer[idx] as char);
-                    idx += 1;
-                }
-                self.cmd = Some(Cmd::Start(arg1));
-                r = 2;
-            }
-
-            b"list " => {
-                self.cmd = Some(Cmd::List);
-                r = 3;
-            }
-
-
-            _ => {
-                self.cmd = None;
-                r = 0;
-            }
+        match &self.cmd {
+            Some(SMCommand::Stop { service_name: _ }) => r = 1,
+            Some(SMCommand::Start { service_name: _ }) => r = 2,
+            Some(SMCommand::List) => r = 3,
+            None => r = 0
         }
 
         Ok(r)       

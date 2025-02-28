@@ -16,3 +16,4 @@ chrono = "0.4.39"
 toml = "0.8.19"
 serde = { version="1.0.217", features=["derive"] }
 hashbrown = "0.15.2"
+shared = { version = "0.1.0", path = "../shared" }

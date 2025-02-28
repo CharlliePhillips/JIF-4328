@@ -2,9 +2,10 @@ use libredox::{call::{open, read, write}, flag::*};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
+use shared::SMCommand;
 use std::{str, borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
 use hashbrown::HashMap;
-use scheme::{Cmd, SMScheme};
+use scheme::SMScheme;
 use timer;
 use chrono::prelude::*;
 use std::sync::mpsc::channel;
@@ -123,7 +124,7 @@ fn main() {
 /// - list: get all pids from managed services and return them to CLI
 fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
     match &sm_scheme.cmd {
-        Some(Cmd::Stop(service_name)) => {
+        Some(SMCommand::Stop{service_name}) => {
             if let Some(service) = services.get_mut(service_name) {
                 if service.running {
                     info!("trying to kill pid {}", service.pid);
@@ -138,7 +139,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             //reset the current command value
             sm_scheme.cmd = None;
         },
-        Some(Cmd::Start(service_name)) => {
+        Some(SMCommand::Start{service_name}) => {
             if let Some(service) = services.get_mut(service_name) {
                 // can add args here later with '.arg()'
                 if (!service.running) {
@@ -181,7 +182,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             //reset the current command value
             sm_scheme.cmd = None;
         },
-        Some(Cmd::List) => {
+        Some(SMCommand::List) => {
             let mut pids: Vec<usize> = Vec::new();
             for service in services.values() {
                 if (service.running) {
