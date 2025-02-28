@@ -144,19 +144,28 @@ A separate program with the name “services” will parse the arguments passed 
 
 ## APIs and Message Flows 
 #### Managed Service API (new-style daemons)
-- Each managed service will have it's main/primary scheme attached to a `BaseScheme` containing several sub-schemes that hold managment data. The BaseScheme will present the main/primary scheme the same way it would be accesed if it was not managed. Data from these managment schemes can be accessed by calling `dup` on the service's scheme and then `read` or `write` on the resulting file descriptor.
+- Each managed service will have it's main/primary scheme attached to a `BaseScheme` containing several sub-schemes that hold managment data. The BaseScheme will present the main/primary scheme the same way it would be accesed if it was not managed. Data from these managment schemes can be accessed by calling `dup(...)` on the service's scheme with the managment scheme named, and then `read(...)` or `write(..)` on the resulting file descriptor.
 
 - The sub-schemes of BaseScheme are:
     - `main_scheme` - The primary scheme for the service, or the one that is pre-existing for an old-style daemon being converted to a managed one.
+        - The `Scheme` trait methods for the main scheme are transparent to the main scheme's implementations. 
     - `pid_scheme` - Contains a u64 proccess id obtained from std::process
-    - `requests_scheme` - Holds five integers counting requests to the main scheme for read, write, open, close, and dup
+        - **Read:** Fills the passed buffer with 8 native endian bytes to be converted to a u64. 
+        - **Write:** Default implementation returning EBADF. The pid of a service should stay the same as long as it's running.
+    - `requests_scheme` - Holds six u64 values counting requests to the main scheme for read, write, open, close, dup, and any errors.
+        - **Read:** Fills the passed buffer with 48 bytes with each 8 bytes cooresponding to a u64 in the order above.
+        - **Write:** Used by the BaseScheme to update the service's stored stats. If `"clear"` is passed on the buffer then the stored values are set to zero, otherwise 48 bytes will be read from the buffer and copied to the same u64 values above.
     - `time_stamp_scheme` - Holds a 64 bit timestamp of when the service was started. Recorded in seconds since Unix epoch (1/1/1970).
-    - `message_scheme` - Holds a 32 byte array of charachters for a human readable status message.
+        - **Read:** Fills the passed buffer with 8 bytes representing seconds (or millis?) as a u64.
+        - **Write:** Default implementation returning EBADF. The time a service started will be the same as long as it's running.
+    - `message_scheme` - Holds a 32? byte array of charachters for a human readable status message.
+        - **Read:** Fills the passed buffer with 32? bytes to be read as an ASCII string.
+        - **Write:** Overwrites the Service's current message with the passed buffer.
     - `control_scheme` - Holds a bool to indicate if a clear has been requested by the service monitor and another to indicate a graceful shutdown has been requested.
+        - **Read:** Fills the buffer with 2 bytes, the first being the value of `bool stop` (0 for false 1 for true) indicating that a service has had a graceful `shutdown()` requested. The second byte is `bool clear` indicating that the service-monitor requested for the stats given by request scheme to be reset.
+        - **Write:** Reads the passed buffer for an ASCII byte string. If the buffer is `"clear"` then `bool clear` is set to true, and if the buffer is `"cleared"` then it set to false. These are used by the service-monitor to clear the statistics, and BaseScheme to indicate that the clearing code is finished respectively. If the buffer is `"stop"` then `bool stop` is set to false.
 
 - The each of the BaseScheme sub-schemes wrapped in the type `ManagmentSubScheme`. This type is an alias for `Arc<Mutex<Box<dyn ManagedScheme>>>` which allows different sized structs implementing Scheme to be accessed in a threadsafe way as the same type.
-
-- BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `ManagmentSubScheme` as it's value. When trying to access a scheme through the BaseScheme a function `handler(id: usize)` is called to get a thread lock on that reference. The scheme's methods can then be called on this mutex guard thanks to Rust's deref trait.
 
 - The BaseScheme implements the following methods from Scheme:
     - `xopen` - Opens the main scheme and adds the new fd and a clone of the arc-mutex containing the scheme to the hash-map of handlers.
@@ -171,10 +180,16 @@ A separate program with the name “services” will parse the arguments passed 
     - `close` - Checks if the passed id is in the hashmap, if it is then pass the close call to the subscheme. The hashmap entry is removed regardless of if calling close on the subscheme was successful.
     - The other methods in the Scheme trait implementation for BaseScheme (fcntl, fsync, etc.) will forward to calling on the main scheme.
 
-- The main scheme for each service will implement the `ManagedScheme` trait.  This trait will contain a collection of methods used by the BaseScheme trait to track the main scheme's statistics. Each of the managment sub-schemes will also implement ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme. The `ManagedScheme` trait is a subtrait of Scheme so anything trying to implement it must also implement the `Scheme` trait. This allows the `BaseScheme` to call methods from both traits on it's subschemes.
-    - `count_ops() -> bool`: returns true if file operations (read, write, open, close, & dup) on this scheme should be counted in the BaseScheme statistics
-    - `message -> Option<[&u8; 32]>` - Returns an Option containing a new 32 btye status message or None if a new message is not available.
-    - `shutdown()` - gracefully stops service, closing open fds, clean up, etc. This is called at an appropriate time in the BaseScheme when ControlScheme.stop is true.
+- Each of the sub-schemes will implement the `ManagedScheme` trait. This trait will contain a collection of methods used by the BaseScheme's methods to track the main scheme's statistics. 
+    - The main scheme of `BaseScheme` is intended to define it's own implementation of `ManagedScheme` too accomodate any service specific behavior.
+    - Each of the managment sub-schemes will use the default implementation of ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme.
+    - The `ManagedScheme` trait is a subtrait of Scheme so anything that implements it must also implement the `Scheme` trait. This allows the `BaseScheme` to call methods from both traits on it's subschemes.
+    - The methods on a `ManagedScheme` are:
+        - `count_ops() -> bool`: Returns true if file operations (read, write, open, close, & dup) on this scheme should be counted in the BaseScheme statistics. **Default:** return false.
+        - `message() -> Option<&[u8; 32]>` - Returns an Option containing a new 32 btye status message or None if a new message is not available. **Default:** return None.
+        - `shutdown() -> bool` - Gracefully stops service, closing open fds, clean up, etc. This is called at an appropriate time in the BaseScheme when ControlScheme.stop is true. Returns true if successful. **Default:** return false.
+
+- BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `ManagmentSubScheme` as it's value. When trying to access a scheme through the BaseScheme the method `handler(id: usize)` is called to get a thread lock on that reference.
 
 - The BaseScheme also contains a managment structure wrapped in an arc mutex. This managment structure contains the recorded statistics for a particular service
 ```rust
@@ -189,6 +204,12 @@ pub struct Managment {
     dup_count: u64,
 }
 ```
+
+- The `BaseScheme` implements these methods:
+    - `new(main_scheme: impl Scheme + 'static + ManagedScheme)` Takes the main scheme as an argument. Anything implementing Scheme and Managed scheme can be passed to this method and it will live for as long as the `BaseScheme` object.
+    - `handler(&self, id: usize) -> Result<SubSchemeGuard>` Takes a usize id which cooresponds to a key in the handlers hash-map and returns a mutex guard for the sub-scheme with that id. The scheme's methods can then be called in a thread safe way on this mutex guard thanks to Rust's deref trait.
+    - `update(&self) -> Result<usize>` This is called each time `handler()` is to make sure that each time a sub-scheme is accessed, it has the most up-to-date data from the managment struct. This includes the file op statistics, message, and resetting the control struct after the statistics have been cleared.
+
 - **Note:** for main schemes implementing the SchemeBlock trait a different BaseScheme and Managment struct will be neccecary for tracking things such as delay time. SchemeBlock allows IO calls to take their time to complete for handling things like drive access. This kind of flow would appear to be an error for the standard BaseScheme.
 
 ### Service Status, Failure Detection & Recovery
@@ -323,3 +344,5 @@ scheme_path = "/scheme/<service>"
 - What happens when a service is not responding that has dependent services still running? 
 - How do permissions/security on the API work? 
 - if we are unable to open and read the pid from a service we just started then should we assume it failed to start?
+- what all needs to happen for a graceful shutdown in a service? This could vary service to service but is there anything that is common for all?
+- can we garuantee that once `shutdown()` is complete that the service is actually cleaned up? (how can the return from `shutdown()` if the service running it has stopped?)

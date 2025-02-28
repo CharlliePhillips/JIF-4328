@@ -286,13 +286,22 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 
                     // set up the info string
                     let mut info_string = format!(
-                    "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nTotal reads: {} \nWrite count: {} \nTotal writes: {}\n
-                    Open count: {} \nTotal_opens: {} \nClose count: {} \nTotal closes: {} \nDup count: {} \nTotal dups: {} \nError count: {} \n
-                    Total errors: {} \nMessage: \"{}\" ", 
-                    service.name, uptime_string, time_init_string, service.read_count, service.total_reads + service.read_count, 
-                    service.write_count, service.total_writes + service.write_count, service.open_count, service.total_opens + service.open_count,
-                    service.close_count, service.total_closes + service.close_count, service.dup_count, service.total_dups + service.dup_count,
-                    service.error_count, service.total_errors + service.error_count, service.message);
+                        "\nService: {} \nUptime: {} \nLast time to initialize: {} \n\
+                        Live READ count: {}, Total: {} \n\
+                        Live WRITE count: {}, Total: {}\n\
+                        Live OPEN count: {}, Total: {} \n\
+                        Live CLOSE count: {}, Total: {} \n\
+                        Live DUP count: {}, Total: {} \n\
+                        Live ERROR count: {}, Total: {} \n\
+                        Message: \"{}\" ", 
+                        service.name, uptime_string, time_init_string, 
+                        service.read_count, service.total_reads + service.read_count, 
+                        service.write_count, service.total_writes + service.write_count, 
+                        service.open_count, service.total_opens + service.open_count,
+                        service.close_count, service.total_closes + service.close_count, 
+                        service.dup_count, service.total_dups + service.dup_count,
+                        service.error_count, service.total_errors + service.error_count, 
+                        service.message);
                     //info!("~sm info string: {:#?}", info_string);
 
                     // set the info buffer to the formatted info string
