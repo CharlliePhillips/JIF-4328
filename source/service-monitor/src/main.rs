@@ -211,38 +211,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             sm_scheme.arg1 = "".to_string();
         },
         CMD_LIST => {
-            let mut servList: Vec<usize> = Vec::new();
-            let mut endString:String = "Name | PID | Uptime | Message | Status\n".to_string();
-            
-            //let mut listString = "";
-            //hashmap_bytes(services, sm_scheme);
-            for service in services.values_mut() {
-                //let service = services.get_mut(&sm_scheme.arg1)
-                if service.running {
-                    update_service_info(service, sm_scheme);
-                    // set up time strings
-                    let time_init = Local.timestamp_millis_opt(service.time_init).unwrap();
-                    let current_time = Local::now();
-                    let duration = current_time.signed_duration_since(time_init);
-                    let hours = duration.num_hours();
-                    let minutes = duration.num_minutes() % 60;
-                    let seconds = duration.num_seconds() % 60;
-                    let millisecs = duration.num_milliseconds() % 1000;
-                    let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
-                    let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
-                    
-                    let listString = format!("{} | {} | {} | {} | Running\n", service.name, service.pid, uptime_string, service.message);
-                    info!("line: {}", listString);
-                    endString.push_str(&listString);
-                    
-                    info!("End: {}", endString);
-                    info!("{:#?}", sm_scheme.list_buffer.as_ptr());
-                } else {
-                    let listString = format!("{} | none | none | none | not running\n", service.name);
-                }
-            }
-                
-            sm_scheme.list_buffer = endString.as_bytes().to_vec();
+            list(services, sm_scheme);
         },
         CMD_CLEAR => {
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
@@ -267,7 +236,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     }
 }
 
-fn update_service_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
+fn update_service_info(service: &mut ServiceEntry) {
     info!("Updating information for: {}", service.name);
 
     let read_buffer: &mut [u8] = &mut [b'0'; 1024];
@@ -318,31 +287,12 @@ fn update_service_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
 
 fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     if service.running {
-        update_service_info(service, sm_scheme);
+        update_service_info(service);
 
         // set up time strings
-        // let time_init = Local.timestamp_opt(service.time_init, 0).unwrap();
-        // let current_time = Local::now();
-        // let duration = current_time.signed_duration_since(time_init);
-        // let hours = duration.num_hours();
-        // let minutes = duration.num_minutes() % 60;
-        // let seconds = duration.num_seconds() % 60;
-        // let millisecs = duration.num_milliseconds() % 1000;
-        // let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
-        // let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
-        let uptime_string = time_string(service.time_started, Local::now().timestamp_millis());
-
-        // this may not be working, time values are always identical, need to check the the order of these values being created
+        let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
+        let time_init_string = time_string(service.time_started, service.time_init);
         info!("~sm time started registered versus time initialized: {}, {}", service.time_started, service.time_init);
-        // let time_started = Local.timestamp_opt(service.time_started, 0).unwrap();
-        // let init_duration = time_init.signed_duration_since(time_started);
-        // let init_minutes = init_duration.num_minutes();
-        // let init_seconds = init_duration.num_seconds() % 60;
-        // let init_millisecs = init_duration.num_milliseconds() % 1000;
-        // let init_seconds_with_millis = format!("{:.3}", init_seconds as f64 + (init_millisecs as f64 / 1000.0));
-        // let time_init_string = format!("{} minutes, {} seconds", init_minutes, init_seconds_with_millis);
-        let time_init_string = time_string(service.time_init, service.time_started);
-
 
         // set up the info string
         let mut info_string = format!(
@@ -359,6 +309,33 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         sm_scheme.cmd = 0;
         sm_scheme.arg1 = "".to_string();
     }
+}
+
+fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
+    let mut endString:String = "Name | PID | Uptime | Message | Status\n".to_string();
+    
+    //let mut listString = "";
+    //hashmap_bytes(services, sm_scheme);
+    for service in service_map.values_mut() {
+        //let service = services.get_mut(&sm_scheme.arg1)
+        if service.running {
+            update_service_info(service);
+            // set up time strings
+            let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
+            
+            let listString = format!("{} | {} | {} | {} | Running\n", service.name, service.pid, uptime_string, service.message);
+            info!("line: {}", listString);
+            endString.push_str(&listString);
+            
+            info!("End: {}", endString);
+            info!("{:#?}", sm_scheme.list_buffer.as_ptr());
+        } else {
+            let listString = format!("{} | none | none | none | not running\n", service.name);
+        }
+    }
+        
+    sm_scheme.list_buffer = endString.as_bytes().to_vec();
+
 }
 
 // function that takes a time difference and returns a string of the time in hours, minutes, and seconds

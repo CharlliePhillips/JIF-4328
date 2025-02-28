@@ -59,7 +59,7 @@ fn main() {
         3 => {
             //need to handle similar to 4 width
             let mut list_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later
-            let size = File::read(sm_fd, &mut list_buffer).expect("failed to read PIDs from service monitor");
+            let size = File::read(sm_fd, &mut list_buffer).expect("failed to read Service List from service monitor");
             list_buffer.truncate(size);
 
             let mut data_string = match std::str::from_utf8(&list_buffer){
