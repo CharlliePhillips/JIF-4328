@@ -484,6 +484,7 @@ fn test_timeout(gtrand2: &mut ServiceEntry) {
 fn test_count_ops(service: &mut ServiceEntry) -> i64 {
     let read_buf = &mut [b'0';8];
     rHelper(service, read_buf, "");
+    info!("successfully read random {}", i64::from_ne_bytes(*read_buf));
     wHelper(service, "", "");
     return i64::from_ne_bytes(*read_buf);
 }
@@ -500,7 +501,7 @@ fn test_err(gtrand2: &mut ServiceEntry) {
         }
         Err(e) => {
             // whatever happens here, do nothing, just testing
-            warn!("test error success!");
+            info!("test error success!");
         }
     }
 }
