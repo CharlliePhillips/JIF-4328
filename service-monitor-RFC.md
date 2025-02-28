@@ -15,16 +15,16 @@ It is critical that a way to monitor and recover services and other daemons be i
 ## User stories 
 
 -  System Start (assume all devices and daemons are known) 
-    - When the Services Manager is started at the end of the boot process it will open the `registry.toml` and read the list of services and their dependent daemons to build a dependency tree. It will then start them in parallel starting at the root(s) (or as each service’s dependencies become available). Any arguments to those programs that would normally be passed to the command line will be specified in an arguments array for each service in the registry. The specified Type of the service can tell the Services Manager how it will treat the service. For example, some services (old style daemons) may be started by the Service Manager but otherwise will not interact with it.  
+    - When the Services Manager is started at the end of the boot process it will open the `registry.toml` and read the list of services and their dependent daemons to build a dependency tree. It will then start them in parallel starting at the root(s) (or as each service’s dependencies become available). Any arguments to those programs that would normally be passed through the command line will be specified in an arguments array for each service in the registry. The specified Type of the service can tell the Services Manager how it will treat the service. For example, some services (old style daemons) may be started by the Service Manager but otherwise will not interact with it.  
 
 - Device Discovery (previously unknown device added to registry) 
     - Long term the Redox team would like to add a “device discovery” daemon that would look for devices attached to the computer and determine their dependencies. This discovery daemon would then request any services needed for a device be started. These requests will be received by the service monitor which will start that service as specified in the registry.toml. While that start thread is running the registry file will be checked for the service and the parameters will be updated if they are different and the manual parameter flag is not set (see more questions). The device discovery daemon is a future project and may need other functionality like stopping, registering, or de-registering services. There should be an API for these kinds of requests as well to make room for future development. 
 
 - Timer-based Status Check 
-    - After a certain time interval, the SM will run a thread to check each managed daemon, read the active bit, message, and calculate the uptime, this data will be sent to the log daemon for recording. 
+    - After a certain time interval, the SM will run a thread to check each managed daemon to ead the recorded operations, errors, message, and calculate the uptime, this data will be stored for each managed service that was read from the registry. 
 
 - Timer-based Failure Detection and Restart 
-    - The timer-based status check can detect a failing daemon if the managed service’s active bit is 0, or it fails to respond with valid data on the regular interval, then the service should be stopped and restarted. Some services will have information in the kernel that is required to properly restart them. What syscall(s) this will be? 
+    - The timer-based status check can detect a failing daemon if it fails to respond with valid data on the regular interval, then the service should be stopped and restarted. If the service monitor attempts to restart a service within 5(?) seconds of starting that service, it will be stopped and not restarted. Some services will have information in the kernel that is required to properly restart them.
 
 ### User Commands: 
 A separate program with the name “services” will parse the arguments passed and call the Service Monitor API accordingly to provide a user interface to the daemon. The services CLI application will open the service monitor scheme and reference it with a file descriptor. The Service Monitor API will use the getattr & setattr syscalls with to send and recieve information from the CLI application. While the getattr & setattr calls are still in development the read/write syscalls will be used. A GUI alternative should also be relatively easy to build with the same Service Monitor API and libcosmic.  
@@ -136,7 +136,8 @@ A separate program with the name “services” will parse the arguments passed 
     - Restart and Restore: 
         - Adding the `-restart` argument stops a registered service and then starts it. Long term data from a managed daemon scheme should be recorded. Some services require information from the kernel to be started in the correct state after Redox has booted. For these services use the argument `–restore`. Ex: `services stop –restore <daemon_name>`
 6. **services register <daemon_name> args=[] path="/scheme/<daemon_name>" depends=["other_daemon"]:** 
-    - Adds an entry for a daemon into the list of managed services, it will be started by the SM with the command line args specified in the array. To manually register an old-style daemon for the SM to start but ignore (i.e. use the SM as init), a user could enter the command `services register –o <daemon_name> args=[]...` where the application path is a valid path to a binary (or the name of one on PATH?). The registry may need additional API calls for editing existing services’ info, we will need to decide if/how this will be controlled by arguments or additional commands.
+    - Adds an entry for a daemon into the list of managed services, it will be started by the SM with the command line args specified in the array. 
+    - To manually register an old-style daemon for the SM to start but ignore (i.e. use the SM as init), a user could enter the command `services register <daemon_name> -o args=[]...` where the application path is a valid path to a binary or the name of one on PATH. The registry may need additional API calls for editing existing services’ info, we will need to decide if/how this will be controlled by arguments or additional commands.
     - `services register -rm <daemon_name>` 
     - `services register -edit <daemon_name> -o args=[] path="/scheme/<daemon_name>" depends=["other_daemon"]` takes variable arguments after `<daemon_name>` to update the registry entry for a service.
     - for arguments `-rm` and `-edit` If that service is running when we attempt to edit the registry then nothing should be done and the user notified that the service cannot be changed while running.
@@ -186,7 +187,7 @@ A separate program with the name “services” will parse the arguments passed 
     - The `ManagedScheme` trait is a subtrait of Scheme so anything that implements it must also implement the `Scheme` trait. This allows the `BaseScheme` to call methods from both traits on it's subschemes.
     - The methods on a `ManagedScheme` are:
         - `count_ops() -> bool`: Returns true if file operations (read, write, open, close, & dup) on this scheme should be counted in the BaseScheme statistics. **Default:** return false.
-        - `message() -> Option<&[u8; 32]>` - Returns an Option containing a new 32 btye status message or None if a new message is not available. **Default:** return None.
+
         - `shutdown() -> bool` - Gracefully stops service, closing open fds, clean up, etc. This is called at an appropriate time in the BaseScheme when ControlScheme.stop is true. Returns true if successful. **Default:** return false.
 
 - BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `ManagmentSubScheme` as it's value. When trying to access a scheme through the BaseScheme the method `handler(id: usize)` is called to get a thread lock on that reference.
@@ -209,7 +210,7 @@ pub struct Managment {
     - `new(main_scheme: impl Scheme + 'static + ManagedScheme)` Takes the main scheme as an argument. Anything implementing Scheme and Managed scheme can be passed to this method and it will live for as long as the `BaseScheme` object.
     - `handler(&self, id: usize) -> Result<SubSchemeGuard>` Takes a usize id which cooresponds to a key in the handlers hash-map and returns a mutex guard for the sub-scheme with that id. The scheme's methods can then be called in a thread safe way on this mutex guard thanks to Rust's deref trait.
     - `update(&self) -> Result<usize>` This is called each time `handler()` is to make sure that each time a sub-scheme is accessed, it has the most up-to-date data from the managment struct. This includes the file op statistics, message, and resetting the control struct after the statistics have been cleared.
-
+    - `message(&self, message: String)` This is called within a daemon implementing `ManagedScheme` to update the message contained in the `message_scheme`. The `String` message is truncated to 32 bytes to fit inside of the scheme.
 - **Note:** for main schemes implementing the SchemeBlock trait a different BaseScheme and Managment struct will be neccecary for tracking things such as delay time. SchemeBlock allows IO calls to take their time to complete for handling things like drive access. This kind of flow would appear to be an error for the standard BaseScheme.
 
 ### Service Status, Failure Detection & Recovery
@@ -252,7 +253,7 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
     - `last_delay`
     - WIP
 
-- Threaded wrappers for get/setattr() will also be needed in the case that a thread executing either syscall is hung on that command. These are interruptible and will return EINTR when their running thread is signaled with SIGALRM. Another thread will monitor the wrapper(s) for response times that are too long and signal them with SIGALRM (using pthread_kill) if they exceed some timeout period. 
+- Threaded wrappers for read/write/get/setattr() will also be needed in the case that a thread executing either syscall is hung on that command. These are interruptible and will return EINTR when their running thread is signaled with SIGALRM. Another thread will monitor the wrapper(s) for response times that are too long and signal them with SIGALRM (using pthread_kill) if they exceed some timeout period. 
 
 - There is some data that will be stored in the Service Monitor for each service running: 
     - Total number of requests (this ignores clearing) 
@@ -275,13 +276,13 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 - Uses and Flows 
     - The Services Manager’s `registry.toml` is updated by Service Discovery through the service manager’s API.  This will run at boot before the rest of the Service Manager is started. For development it should also be possible to enter information into `registry.toml` manually. The`registry.toml` will contain information on how to start a service and what the Service Manger’s behavior will be while managing it. 
         - There will be at least one driver (ACPI-AML) that can only run once during startup and cannot safely be restarted. It will need to be monitored to see if it fails, but the registry will need to include something like, "monitor but don't restart". 
-    - While the Services Manager is running a user can manually add a service by entering the `services register` command. 
+    - While the Services Manager is running a user can manually add, remove or edit a service by using the `services register` command described above in the user commands section. 
 
 - Format 
     - The `registry.toml` stores the commands and arguments to start a service in a .toml file. Each service should have:  
       - A service heading 
       - Name 
-      - Type - You could specify for a service to be ignored by the SM (i.e. using SM as init) by setting the Type to “application”. 
+      - Type - You could specify for a service to be ignored by the SM (i.e. using SM as old-style init) by setting the Type to “unmanaged”. 
       - Starting Arguments 
       - Manual Override – If you enter custom data into the registry.toml and do not want the Service Monitor to potentially override it then this should be set to true. Otherwise risk this information being “corrected” 
       - Depends – A list of named dependencies, this list is used to build dependency tree(s)
@@ -309,7 +310,7 @@ scheme_path = "/scheme/<service>"
 
 3. **API**
     - An API will be provided to the Service Monitor via `read` and `write` on it’s scheme (until get and setattr are ready). Calls when implemented will retrieve information recorded in the Running loop for whatever is program is calling them, or trigger the Service Monitor to start/kill a service. This API will allow code to be triggered by the getattr/setattr syscalls from other applications.
-    - A managment API will be provided for each managed scheme through a `BaseScheme`. This struct holds the primary scheme for the service as well as several others containg the data needed for the service monitor. The `read` and `write` syscalls will be used to access these sub-schemes until `getattr` and `setattr` are ready. The primary scheme will be accessable through the BaseScheme using the same convention as before to ensure compatibility with existing code.
+    - A managment API will be provided for each managed scheme through a `BaseScheme`. This struct holds the primary scheme for the service as well as several others containg the data needed for the service monitor. The `read` and `write` syscalls will be used to access these sub-schemes until `getattr` and `setattr` are ready. The primary scheme will be accessable through the BaseScheme using the same convention as a non-managee scheme to ensure compatibility with existing code.
 
 4. **CLI**
     - A relatively simple program to serve as the user interface that parses command line arguments and makes the corresponding getattr/setattr calls to the Service Monitor API. It then will take any information from the Service Monitor and format it to be printed for the user. 
@@ -328,11 +329,8 @@ scheme_path = "/scheme/<service>"
 - Making the registry split up among multiple files, maybe one per service 
 
 # Unresolved questions
-- With the current implementation if the service monitor writes a request and to a service and then another program attempts to read from that service then it will recieve the response intended for the service manager. How can we tell from inside the `read` function what process called it? Will we have to store something in the `Managment` struct to help identify the service_monitor process?
 - Any remaining common protocols and device specific protocols 
-- Should the timestamp use seconds milliseconds?
 - Should the Device Discovery remove formerly discovered services or manually added services that aren’t found for stability? 
-- Daemon dependencies will come from `Cargo.toml/.lock`? `Registry.toml`? 
 - What happens when a discovered service exists in the registry but the parameters discovered are different then those in the registry, update? Will we need an additional flag in the registry for manual override of this update? 
 - Should a file descriptor for the child's BaseScheme be recorded, the base scheme and managment descriptors? Or should the service monitor open and close file descriptors as it runs.
 - Thread safe function wrappers for getattr/setattr. One thread monitoring all wrappers or a monitor thread for each wrapper? How long, how would a user configure timeout time, should they? 

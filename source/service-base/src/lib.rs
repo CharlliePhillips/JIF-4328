@@ -136,6 +136,23 @@ impl BaseScheme {
             Ok(0)
         }
     }
+
+    pub fn message(&self, message: &str) -> Result<[u8; 32]>{
+        let mut msg_arr: &mut [u8] = &mut [0; 32];
+        if (message.len() > 32){
+            msg_arr.copy_from_slice(&message.as_bytes()[0..32]);
+        } else {
+            msg_arr[0..message.len()].copy_from_slice(&message.as_bytes());
+        }
+        let mut message_lock = self.message_scheme.lock().map_err(|err| Error::new(EBADF))?;
+        message_lock.write(0, msg_arr, 0, 0);
+        
+        let old_msg: &mut [u8] = &mut [0; 32];
+        message_lock.read(0, old_msg, 0, 0);
+        let mut msg_out: [u8; 32] = [0; 32];
+        msg_out.copy_from_slice(old_msg);
+        return Ok(msg_out);
+    }
 }
 impl Scheme for BaseScheme {
     // add ability to select subscheme from open by path?
@@ -242,7 +259,6 @@ impl Scheme for BaseScheme {
         // read from the subscheme
         let mut result = subscheme.read(id, buf, _offset, _flags);
         // if the read did not error and its ManagedScheme impl says so, increment the read counter.
-        println!("result is: {:#?}", result);
         if (!result.is_err() && subscheme.count_ops()) {
             managment.reads += 1;
         } else if (subscheme.count_ops()) {
@@ -426,8 +442,8 @@ impl ManagedScheme for ControlScheme {}
 impl Scheme for ControlScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // writes to the first two bytes indicating 
-        buf[0] = self.stop;
-        buf[1] = self.clear;
+        buf[0] = u8::from(self.stop);
+        buf[1] = u8::from(self.clear);
         Ok(buf.len())
     }
     fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
@@ -525,9 +541,7 @@ pub trait ManagedScheme: Scheme {
         return false;
     }
 
-    fn message(&self) -> Option<&[u8; 32]> {
-        return None;
-    }
+
 
     fn shutdown(&mut self) -> bool {
         return false;

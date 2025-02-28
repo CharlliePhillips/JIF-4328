@@ -372,10 +372,6 @@ impl ManagedScheme for RandScheme {
         return true;
     }
 
-    fn message(&self) -> Option<&[u8; 32]> {
-        return Some(&[b'B'; 32]);
-    }
-
     fn shutdown(&mut self) -> bool {
         return false;
     }

@@ -20,6 +20,7 @@ use syscall::{
     Error, Result, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC, O_CREAT,
     O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY, SchemeMut
 };
+use libredox::{call::{open, read, write}, flag::*, error::*, errno::*};
 // Create an RNG Seed to create initial seed from the rdrand intel instruction
 use rand_core::SeedableRng;
 use sha2::{Digest, Sha256};
@@ -292,7 +293,6 @@ impl Scheme for RandScheme {
         }
 
         if (self.error) {
-            println!("ret error");
             return Err(Error::new(EBADF));
         }
 
@@ -306,7 +306,6 @@ impl Scheme for RandScheme {
         }
 
         if buf == b"error" {
-            println!("set error");
             self.error = true;
         }
 
@@ -396,10 +395,6 @@ impl ManagedScheme for RandScheme {
         return true;
     }
 
-    fn message(&self) -> Option<&[u8; 32]> {
-        return Some(&[b'B'; 32]);
-    }
-
     fn shutdown(&mut self) -> bool {
         return false;
     }
@@ -415,7 +410,8 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
         .expect("randd: failed to mark daemon as ready");
 
     libredox::call::setrens(0, 0).expect("randd: failed to enter null namespace");
-    //scheme.managment.start_managment("started gtrand!");
+
+    scheme.message("starting!");
 
     while let Some(request) = socket
         .next_request(SignalBehavior::Restart)

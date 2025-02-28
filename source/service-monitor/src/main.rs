@@ -196,11 +196,11 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 } else {
                     warn!("service: '{}' is already running", service.name);
                     // we only want to trigger this test on gtrand2 so it will only work when starting gtrand2 twice
+                    test_count_ops(service);
                     if (service.name == "gtrand2") {
                         //test_timeout(service);
                         test_err(service);
                     }
-                    test_count_ops(service);
                     // When we actually report the total number of reads/writes, it should actually be the total added
                     // to whatever the current value in the service is, the toal stored in the service monitor is
                     // updated when the service's count is cleared.
@@ -443,6 +443,7 @@ fn test_timeout(gtrand2: &mut ServiceEntry) {
 fn test_count_ops(service: &mut ServiceEntry) -> i64 {
     let read_buf = &mut [b'0';8];
     rHelper(service, read_buf, "");
+    info!("successfully read random {}", i64::from_ne_bytes(*read_buf));
     wHelper(service, "", "");
     return i64::from_ne_bytes(*read_buf);
 }
@@ -459,7 +460,7 @@ fn test_err(gtrand2: &mut ServiceEntry) {
         }
         Err(e) => {
             // whatever happens here, do nothing, just testing
-            warn!("test error success!");
+            info!("test error success!");
         }
     }
 }
