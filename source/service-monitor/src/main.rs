@@ -10,7 +10,7 @@ use chrono::prelude::*;
 use std::sync::mpsc::channel;
 mod scheme;
 mod registry;
-use registry::{read_registry, ServiceEntry};
+use registry::{read_registry, view_entry, add_entry, rm_entry, ServiceEntry};
 
 
 enum GenericData
@@ -476,6 +476,16 @@ fn test_service_data(service: &mut ServiceEntry) {
     let Ok(child_size) = libredox::call::fstat(child_scheme) else {panic!()};
     // this does not, the main scheme checks the id
     //let Ok(time_size) = libredox::call::fstat(time_scheme) else {panic!()};
+
+
+    //lets test some registry stuff
+    view_entry(service.name.as_str());
+    //add_entry(service.name.as_str(), service.r#type.as_str(), &service.args, service.scheme_path.as_str(), &service.depends);
+    //silly check, but if we make this a -o flag then we'd want a separate case for it
+    //add_entry(service.name.as_str(), "-o", &service.args, service.scheme_path.as_str(), &service.depends);
+
+    //rm test
+    rm_entry("gtrand2");
 }
 
 fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) {

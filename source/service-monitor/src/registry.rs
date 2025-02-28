@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use chrono::prelude::*;
-use std::{fs::File, io::Read, path::Path};
+use std::{fs::File, fs::OpenOptions, io::Read, io::Write, path::Path};
 use hashbrown::HashMap;
 
 
@@ -97,3 +97,75 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
     }
     return services;
 }
+
+// daemon is managed (new style), unmanaged is old-style
+
+pub fn view_entry(name: &str) {
+    let services = read_registry();
+    if let Some(entry) = services.get(name) {
+        // these are just print statments for now, we'd want these to be in the CLI so they'd need to be passed back
+        // but that won't occur until after refactoring
+        println!("Service Name: {}", entry.name);
+        println!("Type: {}", entry.r#type);
+        println!("Args: {:?}", entry.args);
+        println!("Manual Override: {}", entry.manual_override);
+        println!("Depends: {:?}", entry.depends);
+        println!("Scheme Path: {}", entry.scheme_path);
+    } else {
+        println!("Service not found in registry");
+    }
+}
+
+pub fn add_entry(
+    name: &str,
+    r#type: &str, //if this string were to be -o, we'd write "unmanaged" instead of "daemon"
+    args: &Vec<String>,
+    scheme_path: &str,
+    depends: &Vec<String>) 
+{
+    let path: &Path = Path::new("/usr/share/smregistry.toml");
+    let mut file = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(&path)
+        .expect("Unable to open smregistry.toml");
+
+    let manual_override = false;
+    let mut type_str = "daemon";
+    if r#type == "-o" {
+        // old style
+        type_str = "unmanaged";
+    }
+    let new_entry_str = format!(
+        "\n\n[[service]]\nname = \"{}\"\ntype = \"{}\"\nargs = {:?}\nmanual_override = {}\ndepends = {:?}\nscheme_path = \"{}\"\n",
+        name, type_str, args, manual_override, depends, scheme_path
+    );
+    file.write_all(new_entry_str.as_bytes()).expect("Unable to write to smregistry.toml");
+}
+
+pub fn rm_entry(name: &str) { //later on once view returns a buffer, rm could use that to find the entry
+    let services = read_registry();
+    if let Some(entry) = services.get(name) {
+        let entry_str = format!(
+            "[[service]]\nname = \"{}\"\ntype = \"{}\"\nargs = {:?}\nmanual_override = {}\ndepends = {:?}\nscheme_path = \"{}\"",
+            entry.name, entry.r#type, entry.args, entry.manual_override, entry.depends, entry.scheme_path
+        );
+        let path: &Path = Path::new("/usr/share/smregistry.toml");
+        let mut file = OpenOptions::new()
+            .read(true)
+            .open(&path)
+            .expect("Unable to open smregistry.toml");    
+        let mut toml_str: String = String::new();
+        file.read_to_string(&mut toml_str).expect("Unable to read registry.toml as string");
+        println!("{}", &entry_str);
+        let new_toml_str = toml_str.replace(&entry_str, "");
+        let mut file = OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .expect("Unable to open smregistry.toml"); 
+        file.write_all(new_toml_str.as_bytes()).expect("Unable to write to smregistry.toml");
+    } else {
+        println!("Service not found in registry");
+    }
+}
+//add old, add new, rm, view
