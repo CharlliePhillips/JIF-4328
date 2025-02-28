@@ -86,7 +86,7 @@ impl BaseScheme {
     }
 
     fn handler(&self, id: usize) -> Result<SubSchemeGuard>{
-        let _cleared = self.update()?;
+        let _update = self.update()?;
         match self.handlers.get(&id) {
             None => Err(Error::new(EBADF)),
             Some(subscheme) => subscheme.lock().map_err(|err|
@@ -116,7 +116,7 @@ impl BaseScheme {
             control_lock.write(0, b"cleared", 0, 0);
             return Ok(1);
         } else if r_buf[0] == 1{
-            // graceful shutdown code will go here.
+            // graceful shutdown code could go here?
             Ok(0)
         } else {
             // this is a normal data update.
@@ -309,7 +309,7 @@ impl Scheme for BaseScheme {
             let result = scheme.close(id);
             let mut managment = self.managment.lock().map_err(|err| Error::new(EBADF))?;
             if (!result.is_err() && scheme.count_ops()) {
-                managment.dups += 1;
+                managment.closes += 1;
             } else if (result.is_err() && scheme.count_ops()) {
                 managment.errors += 1;
             } 
@@ -425,17 +425,9 @@ impl Scheme for MessageScheme {
 impl ManagedScheme for ControlScheme {}
 impl Scheme for ControlScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        // message is already stored as an array of bytes
-        if self.stop {
-            buf[0] = 1;
-        } else {
-            buf[0] = 0;
-        }
-        if self.clear {
-            buf[1] = 1;
-        } else {
-            buf[1] = 0;
-        }
+        // writes to the first two bytes indicating 
+        buf[0] = self.stop;
+        buf[1] = self.clear;
         Ok(buf.len())
     }
     fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
@@ -450,7 +442,7 @@ impl Scheme for ControlScheme {
             }
             
             b"stop" => {
-            
+                self.stop = true;
             }
             
             _ => {

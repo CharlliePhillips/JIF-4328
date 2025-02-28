@@ -167,7 +167,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             // reset the current command value
             sm_scheme.cmd = None;
         },
-<<<<<<< HEAD
         Some(SMCommand::Info { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 info!("Finding information for '{}'", service.name);
