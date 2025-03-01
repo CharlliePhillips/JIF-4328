@@ -121,6 +121,8 @@ also look at ‘ps’ command for inspo
     - `services register -edit <daemon_name> -o args=[] path="/scheme/<daemon_name>" depends=["other_daemon"]` takes variable arguments after `<daemon_name>` to update the registry entry for a service.
     - for arguments `-rm` and `-edit` If that service is running when we attempt to edit the registry then nothing should be done and the user notified that the service cannot be changed while running.
     - `services register -info <daemon_name>` show the registry entry for the specified service.
+7. **services** / **services --help**
+    - Displays a help page detailing the available commands 
 
 ## APIs and Message Flows 
 #### Managed Service API (new-style daemons)
