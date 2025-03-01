@@ -171,7 +171,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             if let Some(service) = services.get_mut(service_name) {
                 info!("Finding information for '{}'", service.name);
                 info(service, sm_scheme);
-
             } else {
                 warn!("info failed: no service named '{}'", service_name);
                 // reset the current command value
@@ -185,7 +184,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 
 fn update_service_info(service: &mut ServiceEntry) {
     info!("Updating information for: {}", service.name);
-
 
     let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
