@@ -260,7 +260,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 if service.running {
                     info!("found service: {}, grabbing info now", service.name);
 
-                    update_info(service, sm_scheme);
+                    update_info(service);
 
                     // set up time strings
                     let time_init = Local.timestamp_opt(service.time_init, 0).unwrap();
@@ -323,7 +323,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     }
 }
 
-fn update_info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
+fn update_info(service: &mut ServiceEntry) {
     info!("updating information for: {}", service.name);
 
     let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
