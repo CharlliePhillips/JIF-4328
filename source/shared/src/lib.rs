@@ -3,28 +3,30 @@ use clap::Subcommand;
 /// Command enum used by the services command line
 #[derive(Subcommand)]
 pub enum SMCommand {
-    Start{
+    Start {
         service_name: String,
     },
-    Stop{
+    Stop {
         service_name: String,
     },
-    List
+    List,
+    Clear {
+        service_name: String,
+    },
+    Info {
+        service_name: String,
+    },
 }
 
 impl SMCommand {
     /// Returns the lowercase name of the command as a String
     pub fn name(&self) -> String {
         match self {
-            SMCommand::Stop{..} => {
-                String::from("stop")
-            },
-            SMCommand::Start{..} => {
-                String::from("start")
-            },
-            SMCommand::List => {
-                String::from("list")
-            },
+            SMCommand::Stop{..} => String::from("stop"),
+            SMCommand::Start{..} => String::from("start"),
+            SMCommand::List => String::from("list"),
+            SMCommand::Info{..} => String::from("info"),
+            SMCommand::Clear{..} => String::from("clear"),
         }
     }
 
@@ -41,6 +43,14 @@ impl SMCommand {
                 command_string.push_str(&service_name);
             },
             SMCommand::List => {},
+            SMCommand::Clear{service_name} => {
+                command_string.push(' ');
+                command_string.push_str(&service_name);
+            },
+            SMCommand::Info{service_name} => {
+                command_string.push(' ');
+                command_string.push_str(&service_name);
+            },
         }
         command_string.into_bytes()
     }
@@ -72,6 +82,18 @@ impl SMCommand {
             }
             "list" => {
                 return Ok(SMCommand::List);
+            }
+            "clear" => {
+                if cmd_tokens.len() != 2 {
+                    return Err(String::from("Invalid arguments for SMCommand 'clear'"))
+                }
+                return Ok(SMCommand::Clear { service_name: String::from(cmd_tokens[1]) });
+            }
+            "info" => {
+                if cmd_tokens.len() != 2 {
+                    return Err(String::from("Invalid arguments for SMCommand 'info'"))
+                }
+                return Ok(SMCommand::Info { service_name: String::from(cmd_tokens[1]) });
             }
             _ => {
                 return Err(String::from("No valid SMCommand name found in byte buffer"))

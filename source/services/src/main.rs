@@ -20,32 +20,27 @@ fn main() {
     .open("/scheme/service-monitor") else {panic!()};
 
     let success = File::write(sm_fd, &cli.cmd.to_bytes()).expect("Failed to write command to service monitor");
-    
-    match success {
-        // todo: replace this with a more robust status mechanism.
-        // this currently uses a hardcoded value returned to the Ok() status in
-        // Scheme's override for File::write
-        // requirements:
-        // - avoid hardcoded values
-        // - allow for status definitions for start: SERVICE_ALREADY_STARTED, NO_SUCH_SERVICE
-        // - allow for status definitions for stop: SERVICE_ALREADY_STOPPED, NO_SUCH_SERVICE
-        // - optional: pass back error string somehow. this isn't critical but might be nice to hear back from the service-monitor service directly
 
-        // list printout
-        3 => {
-            let mut pid_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later
-            let size = File::read(sm_fd, &mut pid_buffer).expect("failed to read PIDs from service monitor");
-            pid_buffer.truncate(size);
+    if success == 0 {
+        print_response(&cli.cmd, sm_fd);
+    }
+}
 
-            //since each PID is 4 bytes, we chunk and read that way
-            let pids: Vec<usize> = pid_buffer.chunks(4).map(|chunk| {
-                let mut array = [0u8; 4];
-                array.copy_from_slice(chunk);
-                u32::from_ne_bytes(array) as usize
-            }).collect();
-            println!("PIDs: {:?}", pids);
+fn print_response(cmd: &SMCommand, sm_fd: &mut File) {
+    match cmd {
+        SMCommand::List | SMCommand::Info { service_name: _ } => {
+            let mut response_buffer = vec![0u8; 1024]; // 1024 is kinda arbitrary here, may cause issues later
+            let size = File::read(sm_fd, &mut response_buffer).expect("Failed to read PIDs from service monitor");
+            response_buffer.truncate(size);
+
+            let mut data_string = match std::str::from_utf8(&response_buffer){
+                Ok(data) => data,
+                Err(e) => "<data not a valid string>"
+            }.to_string();
+            data_string.retain(|c| c != '\0');
+
+            println!("{}", data_string);
         }
-
-        _ => println!("write command returned value: {success:#?}")
+        _ => {}
     }
 }

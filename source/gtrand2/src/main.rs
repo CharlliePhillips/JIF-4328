@@ -340,7 +340,7 @@ impl Scheme for RandScheme {
     }
     fn fpath(&mut self, _file: usize, buf: &mut [u8]) -> Result<usize> {
         let mut i = 0;
-        let scheme_path = b"gtrand";
+        let scheme_path = b"gtrand2";
         while i < buf.len() && i < scheme_path.len() {
             buf[i] = scheme_path[i];
             i += 1;
@@ -367,7 +367,7 @@ impl Scheme for RandScheme {
 }
 
 fn daemon(daemon: redox_daemon::Daemon) -> ! {
-    let socket = Socket::create("gtrand").expect("randd: failed to create rand scheme");
+    let socket = Socket::create("gtrand2").expect("randd: failed to create rand scheme");
 
     let randscheme = RandScheme::new();
     let mut scheme = BaseScheme::new(randscheme);

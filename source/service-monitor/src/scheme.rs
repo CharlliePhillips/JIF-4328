@@ -13,7 +13,9 @@ use shared::SMCommand;
 
 pub struct SMScheme {
     pub cmd: Option<SMCommand>,
-    pub pid_buffer: Vec<u8>, //used in list, could be better as the BTreeMap from service-monitor later?
+    pub pid_buffer: Vec<u8>, 
+    pub info_buffer: Vec<u8>,
+    pub list_buffer: Vec<u8>,
 }
 
 impl Scheme for SMScheme {
@@ -31,49 +33,37 @@ impl Scheme for SMScheme {
     }
 
     fn read(&mut self, _file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        //if self.cmd == 3 {
-        //  for each 8 bytes in buf:
-        //      buf[8 bytes] = pid; (usize = 64 bits or 8 bytes)
-        //  Ok(buf.length())
-        //}
-        // in services/main.rs smth like
-        // Ok(buffer_size) = read(sm_fd, pid_buffer)
-        // for each 8 bytes in pid_buffer print as usize;
-        //Ok(0)
-
-        //info!("Read called with cmd: {}", self.cmd);
-        if matches!(self.cmd, Some(SMCommand::List)) {
-            let size = std::cmp::min(buf.len(), self.pid_buffer.len());
-            buf[..size].copy_from_slice(&self.pid_buffer[..size]);
-            info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
-            self.cmd = None; //unlike the other commands, needs to fix cmd here instead of in main
-            Ok(size)
-        } else {
-            Ok(0)
-        } 
+        match self.cmd {
+            Some(SMCommand::List) => {
+                // TODO: confirm what this check is for
+                if buf.len() >= 4 {
+                    let size = std::cmp::min(buf.len(), self.pid_buffer.len());
+                    buf[..size].copy_from_slice(&self.pid_buffer[..size]);
+                    info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
+                
+                    self.cmd = None; // unlike the other commands, needs to fix cmd here instead of in main
+                    Ok(size)
+                } else {
+                    return Err(Error::new(EINVAL));
+                }
+            }
+            Some(SMCommand::Info { .. }) => {
+                let size = std::cmp::min(buf.len(), self.info_buffer.len());
+                buf[..size].copy_from_slice(&self.info_buffer[..size]);
+                //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
+                self.cmd = None; // unlike the other commands, needs to fix cmd here instead of in main
+                Ok(size)
+            }
+            _ => Ok(0)
+        }
     }
 
-
-
-    // TODO: currently returns the old hardcoded integer value of the command. do we want to change this?
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        //if buf contains "stop" set command = 1
-        let mut r = 0;
-        //println!("service-monitor command buffer: {buffer:#?}");
-
         self.cmd = match SMCommand::from_bytes(buffer) {
             Ok(cmd) => Some(cmd),
             Err(_) => None
         };
-
-        match &self.cmd {
-            Some(SMCommand::Stop { service_name: _ }) => r = 1,
-            Some(SMCommand::Start { service_name: _ }) => r = 2,
-            Some(SMCommand::List) => r = 3,
-            None => r = 0
-        }
-
-        Ok(r)       
+        Ok(0)       
     }
 
     fn fcntl(&mut self, _id: usize, _cmd: usize, _arg: usize) -> Result<usize> {
