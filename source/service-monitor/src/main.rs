@@ -14,8 +14,7 @@ mod registry;
 use registry::{read_registry, ServiceEntry};
 
 
-enum GenericData
-{
+enum GenericData {
     Byte(u8),
     Short(u16),
     Int(u32),
@@ -82,9 +81,7 @@ fn main() {
 
         let mut sm_scheme = SMScheme{
             cmd: None,
-            pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
-            info_buffer: Vec::new(),
-            list_buffer: Vec::new(),
+            response_buffer: Vec::new(),
         };
         
         info!("service-monitor daemonized with pid: {}", std::process::id());
@@ -131,6 +128,7 @@ fn main() {
 }
 
 // todo: automatically reset sm_scheme.cmd without having to do it in every branch condition
+// todo: figure out how to unify resets to sm_scheme.cmd (currently split btwn here and services/main.rs)
 /// Checks if the service-monitor's command value has been changed and performs the appropriate action.
 /// Currently supports the following commands:
 /// - stop: check if service is running, if it is then get pid and stop
@@ -228,13 +226,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     end_string.push_str(&list_string);
                     
                     info!("End: {}", end_string);
-                    info!("{:#?}", sm_scheme.list_buffer.as_ptr());
+                    info!("{:#?}", sm_scheme.response_buffer.as_ptr());
                 } else {
                     let list_string = format!("{} | none | none | none | not running\n", service.name);
                 }
             }
                 
-            sm_scheme.list_buffer = end_string.as_bytes().to_vec();
+            sm_scheme.response_buffer = end_string.as_bytes().to_vec();
             // ! do not reset the current command value -> wait for scheme.rs to handle it
         },
         Some(SMCommand::Clear { service_name }) => {
@@ -281,7 +279,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     //info!("~sm info string: {:#?}", info_string);
 
                     // set the info buffer to the formatted info string
-                    sm_scheme.info_buffer = info_string.as_bytes().to_vec();
+                    sm_scheme.response_buffer = info_string.as_bytes().to_vec();
 
                 } else {
                     // it should not fail to provide info, so this will need to be changed later
@@ -294,11 +292,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 // reset the current command value
                 sm_scheme.cmd = None;
             }
-            //info!("PIDs as bytes: {:?}", bytes);
-            sm_scheme.pid_buffer = bytes;
-
-            // todo: figure out how to unify this
-            // ! we don't reset the command value here; wait for read() in scheme.rs to handle this case
         },
         None => {},
         _ => {}

@@ -13,9 +13,7 @@ use shared::SMCommand;
 
 pub struct SMScheme {
     pub cmd: Option<SMCommand>,
-    pub pid_buffer: Vec<u8>, 
-    pub info_buffer: Vec<u8>,
-    pub list_buffer: Vec<u8>,
+    pub response_buffer: Vec<u8>,
 }
 
 impl Scheme for SMScheme {
@@ -34,22 +32,9 @@ impl Scheme for SMScheme {
 
     fn read(&mut self, _file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         match self.cmd {
-            Some(SMCommand::List) => {
-                // TODO: confirm what this check is for
-                if buf.len() >= 4 {
-                    let size = std::cmp::min(buf.len(), self.pid_buffer.len());
-                    buf[..size].copy_from_slice(&self.pid_buffer[..size]);
-                    info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
-                
-                    self.cmd = None; // unlike the other commands, needs to fix cmd here instead of in main
-                    Ok(size)
-                } else {
-                    return Err(Error::new(EINVAL));
-                }
-            }
-            Some(SMCommand::Info { .. }) => {
-                let size = std::cmp::min(buf.len(), self.info_buffer.len());
-                buf[..size].copy_from_slice(&self.info_buffer[..size]);
+            Some(SMCommand::List) | Some(SMCommand::Info { .. }) => {
+                let size = std::cmp::min(buf.len(), self.response_buffer.len());
+                buf[..size].copy_from_slice(&self.response_buffer[..size]);
                 //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
                 self.cmd = None; // unlike the other commands, needs to fix cmd here instead of in main
                 Ok(size)
