@@ -442,6 +442,7 @@ impl ManagedScheme for ControlScheme {}
 impl Scheme for ControlScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // writes to the first two bytes indicating 
+
         buf[0] = u8::from(self.stop);
         buf[1] = u8::from(self.clear);
         Ok(buf.len())

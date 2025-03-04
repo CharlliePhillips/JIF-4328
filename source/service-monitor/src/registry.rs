@@ -42,7 +42,6 @@ pub struct ServiceEntry {
     pub total_errors: u64,
     pub last_response_time: i64,
     pub message: String,
-
 }
 
 #[derive(Debug, Deserialize, Serialize)]
