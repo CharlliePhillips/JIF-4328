@@ -194,15 +194,14 @@ A separate program with the name “services” will parse the arguments passed 
 
 - The BaseScheme also contains a management structure wrapped in an arc mutex. This management structure contains the recorded statistics for a particular service
 ```rust
-pub struct management {
-    pid: usize,
-    time_stamp: i64,
-    message: [u8; 32],
+
+pub struct Managment {
     read_count: u64,
     write_count: u64,
     open_count: u64,
     close_count: u64,
     dup_count: u64,
+    error_count: u64,
 }
 ```
 
@@ -238,19 +237,18 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 
 - The file descriptor(s) and registry.toml info for each monitored service is used with the protocols below to collect data on each service. This will then be used to restart or restore processes when they are not working correctly.
 
-- Protocalls here are a 32-byte string passed to getattr()/setattr() with a file descriptor of the service to request statistics from. The file descriptor is obtained by opening the service’s scheme path as a file. A managed service’s scheme will get one of these strings in it’s get/setattr and match it to a function that is part of the managed scheme trait to read and/or write the relevant data to/from the scheme. While getattr and setattr are being implemented read and write will be used instead. 
-    - `active` Boolean indicates if a service is running, it is set to false when read, and set back to true by the service if it is still running. 
-    - `time_stamp` Unix timestamp of when service started. 
-    - `message` An X byte limit string with a human readable message indicating the state of the service. Errors are logged to ‘error_list’ 
-    - `stop` When called the daemon will attempt to shut down gracefully potentially preserving state for restarting. 
-    - `request_count` How many requests received in a tuple of ints (read, write, open, close, dup) 
-    - `error_count` size of error_list. 
-    - `error_list` list of recorded error messages. 
+- Passing the following strings to dup 
+    - `"active"` Boolean indicates if a service is running, it is set to false when read, and set back to true by the service if it is still running. 
+    - `"time_stamp"` Unix timestamp of when service started. 
+    - `"message"` An X byte limit string with a human readable message indicating the state of the service. Errors are logged to ‘error_list’ 
+    - `"stop"` When called the daemon will attempt to shut down gracefully potentially preserving state for restarting. 
+    - `"request_count"` How many requests received in a tuple of ints (read, write, open, close, dup) 
+    - `"error_count"` size of error_list. 
     - `clear` set to 1 to clear the short-term statistics
 
-- There are additional protocalls for services using SchemeBlock
-    - `average_delay`
-    - `last_delay`
+- There are additional strings to request data for services implementing SchemeBlock to SchemeBlock
+    - `"average_delay"`
+    - `"last_delay"`
     - WIP
 
 - Threaded wrappers for read/write/get/setattr() will also be needed in the case that a thread executing either syscall is hung on that command. These are interruptible and will return EINTR when their running thread is signaled with SIGALRM. Another thread will monitor the wrapper(s) for response times that are too long and signal them with SIGALRM (using pthread_kill) if they exceed some timeout period. 
@@ -342,5 +340,7 @@ scheme_path = "/scheme/<service>"
 - What happens when a service is not responding that has dependent services still running? 
 - How do permissions/security on the API work? 
 - if we are unable to open and read the pid from a service we just started then should we assume it failed to start?
+
 - what all needs to happen for a graceful shutdown in a service? This could vary service to service but is there anything that is common for all?
 - can we garuantee that once `shutdown()` is complete that the service is actually cleaned up? (how can the return from `shutdown()` if the service running it has stopped?)
+- Service should decide what message to send to the service monitor, to prevent having to have the Service store it's own copy of the message is it reasonable to have it write to it's BaseScheme? How about another process entirely trying to modify the message? Bigger discussion about permisions?
