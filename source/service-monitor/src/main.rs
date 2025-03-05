@@ -2,12 +2,12 @@ use libredox::{call::{open, read, write}, flag::*, error::*, errno::*};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
-use std::{str, borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
+use std::{str, borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}, thread, time::Duration};
 use hashbrown::HashMap;
 use scheme::SMScheme;
 use timer;
-use chrono::prelude::*;
-use std::sync::mpsc::channel;
+use chrono::{prelude::*};
+use std::sync::mpsc;
 mod scheme;
 mod registry;
 use registry::{read_registry, ServiceEntry};
@@ -42,6 +42,7 @@ fn main() {
         service.time_started = Local::now().timestamp(); // where should this go?
         let mut child_service: Child = std::process::Command::new(name).spawn().expect("failed to start child service");
         child_service.wait();
+        info!("Command::new gave child id: {}", child_service.id());
         service.running = true;
         
         
@@ -198,8 +199,8 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     // we only want to trigger this test on gtrand2 so it will only work when starting gtrand2 twice
                     test_count_ops(service);
                     if (service.name == "gtrand2") {
-                        //test_timeout(service);
-                        test_err(service);
+                        test_timeout(service);
+                        //test_err(service);
                     }
                     // When we actually report the total number of reads/writes, it should actually be the total added
                     // to whatever the current value in the service is, the toal stored in the service monitor is
@@ -221,7 +222,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             for service in services.values_mut() {
                 //let service = services.get_mut(&sm_scheme.arg1)
                 if service.running {
-                    update_info(service, sm_scheme);
+                    update_info(service);
                     // set up time strings
                     let time_init = Local.timestamp_opt(service.time_init, 0).unwrap();
                     let current_time = Local::now();
@@ -471,12 +472,39 @@ fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Resul
             if !data.is_empty() {
                 let data_scheme = libredox::call::dup(child_scheme, data.as_bytes())?;
                 libredox::call::close(child_scheme);
-                let result = libredox::call::read(data_scheme, read_buf);
-                return result;
+                let (sender, receiver) = mpsc::channel::<Result<Result<usize, libredox::error::Error>>>();
+                thread::scope(|s| {
+                    let _t = s.spawn(|| {
+                        match sender.send(Ok(libredox::call::read(data_scheme, read_buf))) {
+                            Ok(result) => {
+                                return result;
+                            }
+
+                            Err(_) => {}
+                        }
+                    });
+                });
+                let result = receiver.recv_timeout(Duration::from_millis(500));
+                //let result = libredox::call::read(data_scheme, read_buf);
+                //return result;
+                return Ok(0);
             } else {
-                let result = libredox::call::read(child_scheme, read_buf);
+                let (sender, receiver) = mpsc::channel::<Result<Result<usize, libredox::error::Error>>>();
+                thread::in_place_scope(|s| {
+                    let _t = s.spawn(|| {
+                        match sender.send(Ok(libredox::call::read(child_scheme, read_buf))) {
+                            Ok(result) => {
+                                return result;
+                            }
+
+                            Err(_) => {}
+                        }
+                    });
+                });
+                let result = receiver.recv_timeout(Duration::from_millis(500));
                 libredox::call::close(child_scheme);
-                return result;
+                warn!("timed out? {:#?}", result);
+                return Ok(0);
             }
         }
         // if we failed to open the base scheme
