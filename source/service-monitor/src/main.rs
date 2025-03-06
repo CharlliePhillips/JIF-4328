@@ -481,13 +481,17 @@ fn clear(service: &mut ServiceEntry) {
 }
 
 fn test_timeout(gtrand2: &mut ServiceEntry) {
+        
+    let read_buf = &mut [b'0'; 32];
+    // make sure we can read
+    read_helper(gtrand2, read_buf, "");
+    info!("got {:#?} from gtrand2", *read_buf);
+    
     let timeout_req = "timeout";
     write_helper(gtrand2, "", timeout_req);
-    let read_buf = &mut [b'0'; 32];
-
-    // for now we expect this to hang,
+    // expecting this call to time out
     read_helper(gtrand2, read_buf, "");
-    // future success? message
+    // success? message
     info!("gtrand 2 timed out!");
 }
 
@@ -522,7 +526,7 @@ fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> R
             // determine which scheme we are trying to read from
             let read_scheme = if !data.is_empty() {
                 let data_scheme = libredox::call::dup(child_scheme, data.as_bytes())?;
-                let _close_res = libredox::call::close(child_scheme);
+                let close_res = libredox::call::close(child_scheme);
                 data_scheme
             } else {
                 child_scheme
@@ -533,35 +537,35 @@ fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> R
             let read_thread = thread::spawn(move || {
                 let thread_buf: &mut [u8; 64] = &mut [0; 64];
                 match sender.send(libredox::call::read(read_scheme, thread_buf)) {
-                    Ok(result) => {
+                    Ok(_result) => {
                         return *thread_buf;
                     }
 
                     Err(_) => {
+                        // must have the same return type, this return value will not be read.
                         return *thread_buf;
                     }
                 }
             });
             info!("DIDNT BLOCK");
-            let final_res = match receiver.recv_timeout(Duration::from_millis(50)) {
+            thread::sleep(Duration::from_millis(50));
+            let final_res = match receiver.try_recv() {
                 Ok(result) => {
-                    read_buf.clone_from_slice(&read_thread.join().expect("didn't join!?")[0..8]);
+                    // dropping the reciever here should intterupt the sender's thread, stop trying to read and return
+                    drop(receiver);
                     warn!("READ DID NOT TIME OUT");
+                    read_buf.clone_from_slice(&read_thread.join().expect("didn't join!?")[0..32]);
                     result
                 }
-                Err(_timeout_err) => {
+                Err(_recv_err) => {
+                    drop(receiver);
                     warn!("READ TIMED OUT");
+                    // for now just kill the service that timed out and return an error
+                    let _kill_res = syscall::kill(service.pid, syscall::SIGKILL);
+                    service.running = false;
                     Err(Error::new(EBADF))
                 }
             };
-            // Another idea without mpsc::channel, this doesn't work either. I think spawning a subprocess with process::Command() could work like this.
-            // thread::sleep(Duration::from_millis(100));
-            // if read_thread.is_finished() {
-            //     read_buf.clone_from_slice(&read_thread.join().expect("didn't join!?")[0..8]);
-            //     Ok(0)
-            // } else {
-            //     kill(read_thread.id());
-            // }
             let _close_res = libredox::call::close(read_scheme);
 
             return final_res;
