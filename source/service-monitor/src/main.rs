@@ -1,38 +1,50 @@
-use libredox::{call::{open, read, write}, flag::*, error::*, errno::*};
+use chrono::prelude::*;
+use hashbrown::HashMap;
+use libredox::{
+    call::{open, read, write},
+    errno::*,
+    error::*,
+    flag::*,
+};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
-use std::{str, borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}, thread, time::Duration};
-use hashbrown::HashMap;
 use scheme::SMScheme;
-use timer;
-use chrono::{prelude::*};
 use std::sync::mpsc;
-mod scheme;
+use std::{
+    borrow::BorrowMut,
+    fmt::{format, Debug},
+    fs::{File, OpenOptions},
+    io::{Read, Write},
+    os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
+    process::{Child, Command, Stdio},
+    str, thread,
+    time::Duration,
+};
+use timer;
 mod registry;
+mod scheme;
 use registry::{read_registry, ServiceEntry};
 
-enum GenericData
-{
+enum GenericData {
     Byte(u8),
     Short(u16),
     Int(u32),
-    Text(String)
+    Text(String),
 }
-
 
 fn main() {
     let _ = RedoxLogger::new()
-    .with_output(
-        OutputBuilder::stdout()
-            .with_filter(log::LevelFilter::Debug)
-            .with_ansi_escape_codes()
-            .build()
-    )
-    .with_process_name("service-monitor".into())
-    .enable();
+        .with_output(
+            OutputBuilder::stdout()
+                .with_filter(log::LevelFilter::Debug)
+                .with_ansi_escape_codes()
+                .build(),
+        )
+        .with_process_name("service-monitor".into())
+        .enable();
     info!("service-monitor logger started");
-    
+
     // make list of managed services
     let mut services: HashMap<String, ServiceEntry> = read_registry();
 
@@ -40,17 +52,19 @@ fn main() {
     for service in services.values_mut() {
         let name: &str = service.name.as_str();
         service.time_started = Local::now().timestamp(); // where should this go?
-        let mut child_service: Child = std::process::Command::new(name).spawn().expect("failed to start child service");
+        let mut child_service: Child = std::process::Command::new(name)
+            .spawn()
+            .expect("failed to start child service");
         child_service.wait();
         info!("Command::new gave child id: {}", child_service.id());
         service.running = true;
-        
-        
+
         // SCRUM-39 TODO: this block should be turned into a new function that preforms this in a single here but can also
         // handle variable requests, maybe defining an enum with all the request types instead of a string would be helpful?
 
         // open the service's BaseScheme
-        let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open child scheme");
+        let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0)
+            .expect("failed to open child scheme");
         // dup into the pid scheme in order to read that data
         if let Ok(pid_scheme) = libredox::call::dup(child_scheme, b"pid") {
             // now we can read the pid onto the buffer from it's subscheme
@@ -73,22 +87,26 @@ fn main() {
         }
     }
 
-
-
     redox_daemon::Daemon::new(move |daemon| {
         let name = "service-monitor";
-        let socket = Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
+        let socket =
+            Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
-        let mut sm_scheme = SMScheme{
+        let mut sm_scheme = SMScheme {
             cmd: 0,
             arg1: String::from(""),
             pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
             info_buffer: Vec::new(),
             list_buffer: Vec::new(),
         };
-        
-        info!("service-monitor daemonized with pid: {}", std::process::id());
-        daemon.ready().expect("service-monitor: failed to notify parent");
+
+        info!(
+            "service-monitor daemonized with pid: {}",
+            std::process::id()
+        );
+        daemon
+            .ready()
+            .expect("service-monitor: failed to notify parent");
         loop {
             /*
             TODO parse registry for updates, this could be skipped while running if no request to edit the registry is pending
@@ -99,12 +117,12 @@ fn main() {
 
              once the services vector is updated use the information to start the list
             */
-            eval_cmd(&mut services, &mut sm_scheme); 
+            eval_cmd(&mut services, &mut sm_scheme);
             // The following is for handling requests to the SM scheme
             // Redox does timers with the timer scheme according to docs https://doc.redox-os.org/book/event-scheme.html
             // not sure if that is still how it works or not, but seems similar to this code
-            // get request 
-             
+            // get request
+
             let Some(request) = socket
                 .next_request(SignalBehavior::Restart)
                 .expect("service-monitor: failed to read events from Service Monitor scheme")
@@ -115,13 +133,13 @@ fn main() {
 
             match request.kind() {
                 RequestKind::Call(request) => {
-
                     // handle request
                     let response = request.handle_scheme(&mut sm_scheme);
                     socket
                         .write_responses(&[response], SignalBehavior::Restart)
-                        .expect("service-monitor: failed to write responses to Service Monitor scheme");
-
+                        .expect(
+                            "service-monitor: failed to write responses to Service Monitor scheme",
+                        );
                 }
                 _ => (),
             }
@@ -142,7 +160,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     const CMD_CLEAR: u32 = 4;
     const CMD_INFO: u32 = 5;
 
-
     match sm_scheme.cmd {
         CMD_STOP => {
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
@@ -159,7 +176,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             //reset the current command value
             sm_scheme.cmd = 0;
             sm_scheme.arg1 = "".to_string();
-        },
+        }
         CMD_START => {
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                 // can add args here later with '.arg()'
@@ -170,13 +187,16 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                             //service.pid += 2;
                             service.time_started = Local::now().timestamp(); // where should this go for the start command?
                             child.wait();
-                            let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
-                                .expect("couldn't open child scheme");
+                            let child_scheme =
+                                libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
+                                    .expect("couldn't open child scheme");
                             let pid_req = b"pid";
-                            let pid_scheme = libredox::call::dup(child_scheme, pid_req).expect("could not get pid");
-                            
+                            let pid_scheme = libredox::call::dup(child_scheme, pid_req)
+                                .expect("could not get pid");
+
                             let read_buffer: &mut [u8] = &mut [b'0'; 32];
-                            libredox::call::read(pid_scheme, read_buffer).expect("could not read pid");
+                            libredox::call::read(pid_scheme, read_buffer)
+                                .expect("could not read pid");
                             // process the buffer based on the request
                             let mut pid_bytes: [u8; 8] = [0; 8];
                             for mut i in 0..8 {
@@ -188,8 +208,8 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                             service.pid = pid;
                             info!("child started with pid: {:#?}", service.pid);
                             service.running = true;
-                        },
-    
+                        }
+
                         Err(e) => {
                             warn!("start failed: could not start {}", service.name);
                         }
@@ -212,11 +232,11 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             //reset the current command value
             sm_scheme.cmd = 0;
             sm_scheme.arg1 = "".to_string();
-        },
+        }
         CMD_LIST => {
             let mut servList: Vec<usize> = Vec::new();
-            let mut endString:String = "Name | PID | Uptime | Message | Status\n".to_string();
-            
+            let mut endString: String = "Name | PID | Uptime | Message | Status\n".to_string();
+
             //let mut listString = "";
             //hashmap_bytes(services, sm_scheme);
             for service in services.values_mut() {
@@ -231,22 +251,30 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     let minutes = duration.num_minutes() % 60;
                     let seconds = duration.num_seconds() % 60;
                     let millisecs = duration.num_milliseconds() % 1000;
-                    let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
-                    let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
-                    
-                    let listString = format!("{} | {} | {} | {} | Running\n", service.name, service.pid, uptime_string, service.message);
+                    let seconds_with_millis =
+                        format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
+                    let uptime_string = format!(
+                        "{} hours, {} minutes, {} seconds",
+                        hours, minutes, seconds_with_millis
+                    );
+
+                    let listString = format!(
+                        "{} | {} | {} | {} | Running\n",
+                        service.name, service.pid, uptime_string, service.message
+                    );
                     info!("line: {}", listString);
                     endString.push_str(&listString);
-                    
+
                     info!("End: {}", endString);
                     info!("{:#?}", sm_scheme.list_buffer.as_ptr());
                 } else {
-                    let listString = format!("{} | none | none | none | not running\n", service.name);
+                    let listString =
+                        format!("{} | none | none | none | not running\n", service.name);
                 }
             }
-                
+
             sm_scheme.list_buffer = endString.as_bytes().to_vec();
-        },
+        }
         CMD_CLEAR => {
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                 info!("Clearing short-term stats for '{}'", service.name);
@@ -255,7 +283,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 
             sm_scheme.cmd = 0;
             sm_scheme.arg1 = "".to_string();
-        },
+        }
         CMD_INFO => {
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                 if service.running {
@@ -271,19 +299,31 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     let minutes = duration.num_minutes() % 60;
                     let seconds = duration.num_seconds() % 60;
                     let millisecs = duration.num_milliseconds() % 1000;
-                    let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
-                    let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
+                    let seconds_with_millis =
+                        format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
+                    let uptime_string = format!(
+                        "{} hours, {} minutes, {} seconds",
+                        hours, minutes, seconds_with_millis
+                    );
 
                     // this may not be working, time values are always identical, need to check the the order of these values being created
-                    info!("~sm time started registered versus time initialized: {}, {}", service.time_started, service.time_init);
+                    info!(
+                        "~sm time started registered versus time initialized: {}, {}",
+                        service.time_started, service.time_init
+                    );
                     let time_started = Local.timestamp_opt(service.time_started, 0).unwrap();
                     let init_duration = time_init.signed_duration_since(time_started);
                     let init_minutes = init_duration.num_minutes();
                     let init_seconds = init_duration.num_seconds() % 60;
                     let init_millisecs = init_duration.num_milliseconds() % 1000;
-                    let init_seconds_with_millis = format!("{:.3}", init_seconds as f64 + (init_millisecs as f64 / 1000.0));
-                    let time_init_string = format!("{} minutes, {} seconds", init_minutes, init_seconds_with_millis);
-
+                    let init_seconds_with_millis = format!(
+                        "{:.3}",
+                        init_seconds as f64 + (init_millisecs as f64 / 1000.0)
+                    );
+                    let time_init_string = format!(
+                        "{} minutes, {} seconds",
+                        init_minutes, init_seconds_with_millis
+                    );
 
                     // set up the info string
                     let mut info_string = format!(
@@ -294,20 +334,28 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                         Live CLOSE count: {}, Total: {} \n\
                         Live DUP count: {}, Total: {} \n\
                         Live ERROR count: {}, Total: {} \n\
-                        Message: \"{}\" ", 
-                        service.name, uptime_string, time_init_string, 
-                        service.read_count, service.total_reads + service.read_count, 
-                        service.write_count, service.total_writes + service.write_count, 
-                        service.open_count, service.total_opens + service.open_count,
-                        service.close_count, service.total_closes + service.close_count, 
-                        service.dup_count, service.total_dups + service.dup_count,
-                        service.error_count, service.total_errors + service.error_count, 
-                        service.message);
+                        Message: \"{}\" ",
+                        service.name,
+                        uptime_string,
+                        time_init_string,
+                        service.read_count,
+                        service.total_reads + service.read_count,
+                        service.write_count,
+                        service.total_writes + service.write_count,
+                        service.open_count,
+                        service.total_opens + service.open_count,
+                        service.close_count,
+                        service.total_closes + service.close_count,
+                        service.dup_count,
+                        service.total_dups + service.dup_count,
+                        service.error_count,
+                        service.total_errors + service.error_count,
+                        service.message
+                    );
                     //info!("~sm info string: {:#?}", info_string);
 
                     // set the info buffer to the formatted info string
                     sm_scheme.info_buffer = info_string.as_bytes().to_vec();
-
                 } else {
                     // it should not fail to provide info, so this will need to be changed later
                     warn!("info failed: {} is not running", service.name);
@@ -319,7 +367,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 sm_scheme.cmd = 0;
                 sm_scheme.arg1 = "".to_string();
             }
-        },
+        }
         _ => {}
     }
 }
@@ -327,30 +375,32 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 fn update_info(service: &mut ServiceEntry) {
     info!("updating information for: {}", service.name);
 
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
+        .expect("couldn't open child scheme");
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
 
     let req = b"request_count";
     let time = b"time_stamp";
     let message = b"message";
 
-
-    let message_scheme = libredox::call::dup(child_scheme, message).expect("could not dup message fd");
+    let message_scheme =
+        libredox::call::dup(child_scheme, message).expect("could not dup message fd");
     libredox::call::read(message_scheme, read_buffer);
     // grab the string
-    let mut message_string = match str::from_utf8(&read_buffer){
+    let mut message_string = match str::from_utf8(&read_buffer) {
         Ok(data) => data,
-        Err(e) => "<data not a valid string>"
-    }.to_string();
+        Err(e) => "<data not a valid string>",
+    }
+    .to_string();
     // change trailing 0 chars into empty string
     message_string.retain(|c| c != '\0');
     //info!("~sm found a data string: {:#?}", message_string);
     service.message = message_string;
 
-    // get and print read, write, open, close, & dup count, they are successive u64 bytes read from requests subscheme 
+    // get and print read, write, open, close, & dup count, they are successive u64 bytes read from requests subscheme
     let reqs_scheme = libredox::call::dup(child_scheme, req).expect("could not dup reqs fd");
     libredox::call::read(reqs_scheme, read_buffer);
-    
+
     let mut read_bytes: [u8; 8] = [0; 8];
     let mut write_bytes: [u8; 8] = [0; 8];
     let mut open_bytes: [u8; 8] = [0; 8];
@@ -369,7 +419,6 @@ fn update_info(service: &mut ServiceEntry) {
     service.close_count = u64::from_ne_bytes(close_bytes);
     service.dup_count = u64::from_ne_bytes(dup_bytes);
     service.error_count = u64::from_ne_bytes(error_bytes);
-
 
     let time_scheme = libredox::call::dup(child_scheme, time).expect("could not dup time fd");
     // set up the read buffer and read from the scheme into it
@@ -394,11 +443,12 @@ fn update_info(service: &mut ServiceEntry) {
 fn clear(service: &mut ServiceEntry) {
     // open the service scheme
     let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0)
-                .expect("couldn't open child scheme");
+        .expect("couldn't open child scheme");
     // open the management subschemes
     let cntl_scheme = libredox::call::dup(child_scheme, b"control").expect("could not get cntl");
-    let reqs_scheme = libredox::call::dup(child_scheme, b"request_count").expect("couldn't get request_count");
-    
+    let reqs_scheme =
+        libredox::call::dup(child_scheme, b"request_count").expect("couldn't get request_count");
+
     // read the requests into a buffer
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
     libredox::call::read(reqs_scheme, read_buffer);
@@ -424,37 +474,37 @@ fn clear(service: &mut ServiceEntry) {
     service.total_dups += u64::from_ne_bytes(dup_bytes);
     service.total_errors += u64::from_ne_bytes(error_bytes);
 
-    // clear the data and close the schemes.            
+    // clear the data and close the schemes.
     libredox::call::write(cntl_scheme, b"clear").expect("could not write to cntl");
     libredox::call::close(cntl_scheme).expect("failed to close cntl");
     libredox::call::close(child_scheme).expect("failed to close child");
 }
 
 fn test_timeout(gtrand2: &mut ServiceEntry) {
-    let timeout_req =  "timeout";
-    wHelper(gtrand2, "", timeout_req);
-    let read_buf = &mut [b'0';32];
+    let timeout_req = "timeout";
+    write_helper(gtrand2, "", timeout_req);
+    let read_buf = &mut [b'0'; 32];
 
-    // for now we expect this to hang, 
-    rHelper(gtrand2, read_buf,"");
+    // for now we expect this to hang,
+    read_helper(gtrand2, read_buf, "");
     // future success? message
     info!("gtrand 2 timed out!");
 }
 
 fn test_count_ops(service: &mut ServiceEntry) -> i64 {
-    let read_buf = &mut [b'0';8];
-    rHelper(service, read_buf, "");
+    let read_buf = &mut [b'0'; 8];
+    read_helper(service, read_buf, "");
     info!("successfully read random {}", i64::from_ne_bytes(*read_buf));
-    wHelper(service, "", "");
+    write_helper(service, "", "");
     return i64::from_ne_bytes(*read_buf);
 }
 
 fn test_err(gtrand2: &mut ServiceEntry) {
-    let timeout_req =  "error";
-    wHelper(gtrand2, "", timeout_req);
-    let read_buf = &mut [b'0';32];
-    // for now we expect this to hang, 
-    match rHelper(gtrand2, read_buf,"") {
+    let timeout_req = "error";
+    write_helper(gtrand2, "", timeout_req);
+    let read_buf = &mut [b'0'; 32];
+    // for now we expect this to hang,
+    match read_helper(gtrand2, read_buf, "") {
         Ok(i) => {
             // whatever happens here, do nothing, just testing
             warn!("test error failed!");
@@ -466,46 +516,55 @@ fn test_err(gtrand2: &mut ServiceEntry) {
     }
 }
 
-fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Result<usize>{
+fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Result<usize> {
     match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
         Ok(child_scheme) => {
-            if !data.is_empty() {
+            // determine which scheme we are trying to read from
+            let read_scheme = if !data.is_empty() {
                 let data_scheme = libredox::call::dup(child_scheme, data.as_bytes())?;
-                libredox::call::close(child_scheme);
-                let (sender, receiver) = mpsc::channel::<Result<Result<usize, libredox::error::Error>>>();
-                thread::scope(|s| {
-                    let _t = s.spawn(|| {
-                        match sender.send(Ok(libredox::call::read(data_scheme, read_buf))) {
-                            Ok(result) => {
-                                return result;
-                            }
-
-                            Err(_) => {}
-                        }
-                    });
-                });
-                let result = receiver.recv_timeout(Duration::from_millis(500));
-                //let result = libredox::call::read(data_scheme, read_buf);
-                //return result;
-                return Ok(0);
+                let _close_res = libredox::call::close(child_scheme);
+                data_scheme
             } else {
-                let (sender, receiver) = mpsc::channel::<Result<Result<usize, libredox::error::Error>>>();
-                thread::in_place_scope(|s| {
-                    let _t = s.spawn(|| {
-                        match sender.send(Ok(libredox::call::read(child_scheme, read_buf))) {
-                            Ok(result) => {
-                                return result;
-                            }
+                child_scheme
+            };
 
-                            Err(_) => {}
-                        }
-                    });
-                });
-                let result = receiver.recv_timeout(Duration::from_millis(500));
-                libredox::call::close(child_scheme);
-                warn!("timed out? {:#?}", result);
-                return Ok(0);
-            }
+            // read from the scheme with a timeout
+            let (sender, receiver) = mpsc::channel::<Result<usize>>();
+            let read_thread = thread::spawn(move || {
+                let thread_buf: &mut [u8; 64] = &mut [0; 64];
+                match sender.send(libredox::call::read(read_scheme, thread_buf)) {
+                    Ok(result) => {
+                        return *thread_buf;
+                    }
+
+                    Err(_) => {
+                        return *thread_buf;
+                    }
+                }
+            });
+            info!("DIDNT BLOCK");
+            let final_res = match receiver.recv_timeout(Duration::from_millis(50)) {
+                Ok(result) => {
+                    read_buf.clone_from_slice(&read_thread.join().expect("didn't join!?")[0..8]);
+                    warn!("READ DID NOT TIME OUT");
+                    result
+                }
+                Err(_timeout_err) => {
+                    warn!("READ TIMED OUT");
+                    Err(Error::new(EBADF))
+                }
+            };
+            // Another idea without mpsc::channel, this doesn't work either. I think spawning a subprocess with process::Command() could work like this.
+            // thread::sleep(Duration::from_millis(100));
+            // if read_thread.is_finished() {
+            //     read_buf.clone_from_slice(&read_thread.join().expect("didn't join!?")[0..8]);
+            //     Ok(0)
+            // } else {
+            //     kill(read_thread.id());
+            // }
+            let _close_res = libredox::call::close(read_scheme);
+
+            return final_res;
         }
         // if we failed to open the base scheme
         _ => {
@@ -514,15 +573,24 @@ fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Resul
     }
 }
 
-fn wHelper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) {
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("could not open child/service base scheme");
-    let subscheme = libredox::call::dup(child_scheme, subscheme_name.as_bytes()).expect("could not dup fd");
+fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) {
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0)
+        .expect("could not open child/service base scheme");
+    let subscheme =
+        libredox::call::dup(child_scheme, subscheme_name.as_bytes()).expect("could not dup fd");
     libredox::call::write(subscheme, data.as_bytes()).expect("could not write to scheme");
     libredox::call::close(subscheme);
 }
 
 fn extract_bytes(data_vec: &Vec<GenericData>) -> Vec<u8> {
-    data_vec.iter()
-        .filter_map(|d| if let GenericData::Byte(b) = d { Some(*b) } else { None })
+    data_vec
+        .iter()
+        .filter_map(|d| {
+            if let GenericData::Byte(b) = d {
+                Some(*b)
+            } else {
+                None
+            }
+        })
         .collect()
 }
