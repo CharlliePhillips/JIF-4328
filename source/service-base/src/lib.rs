@@ -530,9 +530,6 @@ pub trait ManagedScheme: Scheme {
     fn count_ops(&self) -> bool{
         return false;
     }
-
-
-
     fn shutdown(&mut self) -> bool {
         return false;
     }

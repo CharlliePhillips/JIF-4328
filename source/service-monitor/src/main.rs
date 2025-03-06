@@ -1,38 +1,42 @@
-use libredox::{call::{open, read, write}, flag::*, error::*, errno::*};
+use chrono::prelude::*;
+use hashbrown::HashMap;
+use libredox::{
+    call::{open, read, write},
+    errno::*,
+    error::*,
+    flag::*,
+};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
 use shared::{SMCommand, RegistryCommand};
 use std::{str, borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
-use hashbrown::HashMap;
 use scheme::SMScheme;
-use timer;
-use chrono::{prelude::*};
 use std::sync::mpsc;
-mod scheme;
+use timer;
 mod registry;
 use registry::{read_registry, view_entry, add_entry, add_hash_entry, rm_entry, rm_hash_entry, edit_entry, edit_hash_entry, ServiceEntry};
+
 
 enum GenericData {
     Byte(u8),
     Short(u16),
     Int(u32),
-    Text(String)
+    Text(String),
 }
-
 
 fn main() {
     let _ = RedoxLogger::new()
-    .with_output(
-        OutputBuilder::stdout()
-            .with_filter(log::LevelFilter::Debug)
-            .with_ansi_escape_codes()
-            .build()
-    )
-    .with_process_name("service-monitor".into())
-    .enable();
+        .with_output(
+            OutputBuilder::stdout()
+                .with_filter(log::LevelFilter::Debug)
+                .with_ansi_escape_codes()
+                .build(),
+        )
+        .with_process_name("service-monitor".into())
+        .enable();
     info!("service-monitor logger started");
-    
+
     // make list of managed services
     let mut services: HashMap<String, ServiceEntry> = read_registry();
 
@@ -44,13 +48,13 @@ fn main() {
         child_service.wait();
         info!("Command::new gave child id: {}", child_service.id());
         service.running = true;
-        
-        
+
         // SCRUM-39 TODO: this block should be turned into a new function that preforms this in a single here but can also
         // handle variable requests, maybe defining an enum with all the request types instead of a string would be helpful?
 
         // open the service's BaseScheme
-        let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open child scheme");
+        let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0)
+            .expect("failed to open child scheme");
         // dup into the pid scheme in order to read that data
         if let Ok(pid_scheme) = libredox::call::dup(child_scheme, b"pid") {
             // now we can read the pid onto the buffer from it's subscheme
@@ -73,19 +77,23 @@ fn main() {
         }
     }
 
-
-
     redox_daemon::Daemon::new(move |daemon| {
         let name = "service-monitor";
-        let socket = Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
+        let socket =
+            Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
         let mut sm_scheme = SMScheme{
             cmd: None,
             response_buffer: Vec::new(),
         };
-        
-        info!("service-monitor daemonized with pid: {}", std::process::id());
-        daemon.ready().expect("service-monitor: failed to notify parent");
+
+        info!(
+            "service-monitor daemonized with pid: {}",
+            std::process::id()
+        );
+        daemon
+            .ready()
+            .expect("service-monitor: failed to notify parent");
         loop {
             /*
             TODO parse registry for updates, this could be skipped while running if no request to edit the registry is pending
@@ -96,12 +104,12 @@ fn main() {
 
              once the services vector is updated use the information to start the list
             */
-            eval_cmd(&mut services, &mut sm_scheme); 
+            eval_cmd(&mut services, &mut sm_scheme);
             // The following is for handling requests to the SM scheme
             // Redox does timers with the timer scheme according to docs https://doc.redox-os.org/book/event-scheme.html
             // not sure if that is still how it works or not, but seems similar to this code
-            // get request 
-             
+            // get request
+
             let Some(request) = socket
                 .next_request(SignalBehavior::Restart)
                 .expect("service-monitor: failed to read events from Service Monitor scheme")
@@ -112,13 +120,13 @@ fn main() {
 
             match request.kind() {
                 RequestKind::Call(request) => {
-
                     // handle request
                     let response = request.handle_scheme(&mut sm_scheme);
                     socket
                         .write_responses(&[response], SignalBehavior::Restart)
-                        .expect("service-monitor: failed to write responses to Service Monitor scheme");
-
+                        .expect(
+                            "service-monitor: failed to write responses to Service Monitor scheme",
+                        );
                 }
                 _ => (),
             }
@@ -140,7 +148,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             if let Some(service) = services.get_mut(service_name) {
                 info!("Stopping '{}'", service.name);
                 stop(service, sm_scheme);
-            } else {
+           } else {
                 warn!("stop failed: no service named '{}'", service_name);
             }
             // reset the current command value
@@ -173,7 +181,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             if let Some(service) = services.get_mut(service_name) {
                 info!("Finding information for '{}'", service.name);
                 info(service, sm_scheme);
-            } else {
+           } else {
                 warn!("info failed: no service named '{}'", service_name);
                 // reset the current command value
                 sm_scheme.cmd = None;
@@ -212,37 +220,39 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             
         },
         None => {},
-        _ => {}
+       _ => {}
     }
 }
 
 fn update_service_info(service: &mut ServiceEntry) {
     info!("Updating information for: {}", service.name);
 
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1).expect("couldn't open child scheme");
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
+        .expect("couldn't open child scheme");
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
 
     let req = "request_count";
     let time = "time_stamp";
     let message = "message";
 
-
-    let message_scheme = libredox::call::dup(child_scheme, message).expect("could not dup message fd");
+    let message_scheme =
+        libredox::call::dup(child_scheme, message).expect("could not dup message fd");
     libredox::call::read(message_scheme, read_buffer);
     // grab the string
-    let mut message_string = match str::from_utf8(&read_buffer){
+    let mut message_string = match str::from_utf8(&read_buffer) {
         Ok(data) => data,
-        Err(e) => "<data not a valid string>"
-    }.to_string();
+        Err(e) => "<data not a valid string>",
+    }
+    .to_string();
     // change trailing 0 chars into empty string
     message_string.retain(|c| c != '\0');
     //info!("~sm found a data string: {:#?}", message_string);
     service.message = message_string;
 
-    // get and print read, write, open, close, & dup count, they are successive u64 bytes read from requests subscheme 
+    // get and print read, write, open, close, & dup count, they are successive u64 bytes read from requests subscheme
     let reqs_scheme = libredox::call::dup(child_scheme, req).expect("could not dup reqs fd");
     libredox::call::read(reqs_scheme, read_buffer);
-    
+
     let mut read_bytes: [u8; 8] = [0; 8];
     let mut write_bytes: [u8; 8] = [0; 8];
     let mut open_bytes: [u8; 8] = [0; 8];
@@ -262,9 +272,8 @@ fn update_service_info(service: &mut ServiceEntry) {
     service.dup_count = u64::from_ne_bytes(dup_bytes);
     service.error_count = u64::from_ne_bytes(error_bytes);
 
-
     // get and process the message
-    rHelper(service, read_buffer, message);
+    read_helper(service, read_buffer, message);
     let mut message_string = match str::from_utf8(&read_buffer){
         Ok(data) => data,
         Err(e) => "<data not a valid string>"
@@ -275,7 +284,7 @@ fn update_service_info(service: &mut ServiceEntry) {
     service.message = message_string;
 
     // get and process the start time
-    rHelper(service, read_buffer, time);
+    read_helper(service, read_buffer, time);
     let mut time_bytes = [0; 8];
     for mut i in 0..8 {
         time_bytes[i] = read_buffer[i];
@@ -434,11 +443,12 @@ fn time_string(start_time: i64, end_time: i64) -> String {
 fn clear(service: &mut ServiceEntry) {
     // open the service scheme
     let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0)
-                .expect("couldn't open child scheme");
+        .expect("couldn't open child scheme");
     // open the management subschemes
     let cntl_scheme = libredox::call::dup(child_scheme, b"control").expect("could not get cntl");
-    let reqs_scheme = libredox::call::dup(child_scheme, b"request_count").expect("couldn't get request_count");
-    
+    let reqs_scheme =
+        libredox::call::dup(child_scheme, b"request_count").expect("couldn't get request_count");
+
     // read the requests into a buffer
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
     libredox::call::read(reqs_scheme, read_buffer);
@@ -464,37 +474,37 @@ fn clear(service: &mut ServiceEntry) {
     service.total_dups += u64::from_ne_bytes(dup_bytes);
     service.total_errors += u64::from_ne_bytes(error_bytes);
 
-    // clear the data and close the schemes.            
+    // clear the data and close the schemes.
     libredox::call::write(cntl_scheme, b"clear").expect("could not write to cntl");
     libredox::call::close(cntl_scheme).expect("failed to close cntl");
     libredox::call::close(child_scheme).expect("failed to close child");
 }
 
 fn test_timeout(gtrand2: &mut ServiceEntry) {
-    let timeout_req =  "timeout";
-    wHelper(gtrand2, "", timeout_req);
-    let read_buf = &mut [b'0';32];
+    let timeout_req = "timeout";
+    write_helper(gtrand2, "", timeout_req);
+    let read_buf = &mut [b'0'; 32];
 
-    // for now we expect this to hang, 
-    rHelper(gtrand2, read_buf,"");
+    // for now we expect this to hang,
+    read_helper(gtrand2, read_buf, "");
     // future success? message
     info!("gtrand 2 timed out!");
 }
 
 fn test_count_ops(service: &mut ServiceEntry) -> i64 {
-    let read_buf = &mut [b'0';8];
-    rHelper(service, read_buf, "");
+    let read_buf = &mut [b'0'; 8];
+    read_helper(service, read_buf, "");
     info!("successfully read random {}", i64::from_ne_bytes(*read_buf));
-    wHelper(service, "", "");
+    write_helper(service, "", "");
     return i64::from_ne_bytes(*read_buf);
 }
 
 fn test_err(gtrand2: &mut ServiceEntry) {
-    let timeout_req =  "error";
-    wHelper(gtrand2, "", timeout_req);
-    let read_buf = &mut [b'0';32];
-    // for now we expect this to hang, 
-    match rHelper(gtrand2, read_buf,"") {
+    let timeout_req = "error";
+    write_helper(gtrand2, "", timeout_req);
+    let read_buf = &mut [b'0'; 32];
+    // for now we expect this to hang,
+    match read_helper(gtrand2, read_buf, "") {
         Ok(i) => {
             // whatever happens here, do nothing, just testing
             warn!("test error failed!");
@@ -506,46 +516,55 @@ fn test_err(gtrand2: &mut ServiceEntry) {
     }
 }
 
-fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Result<usize>{
+fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Result<usize> {
     match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
         Ok(child_scheme) => {
-            if !data.is_empty() {
+            // determine which scheme we are trying to read from
+            let read_scheme = if !data.is_empty() {
                 let data_scheme = libredox::call::dup(child_scheme, data.as_bytes())?;
-                libredox::call::close(child_scheme);
-                let (sender, receiver) = mpsc::channel::<Result<Result<usize, libredox::error::Error>>>();
-                thread::scope(|s| {
-                    let _t = s.spawn(|| {
-                        match sender.send(Ok(libredox::call::read(data_scheme, read_buf))) {
-                            Ok(result) => {
-                                return result;
-                            }
-
-                            Err(_) => {}
-                        }
-                    });
-                });
-                let result = receiver.recv_timeout(Duration::from_millis(500));
-                //let result = libredox::call::read(data_scheme, read_buf);
-                //return result;
-                return Ok(0);
+                let _close_res = libredox::call::close(child_scheme);
+                data_scheme
             } else {
-                let (sender, receiver) = mpsc::channel::<Result<Result<usize, libredox::error::Error>>>();
-                thread::in_place_scope(|s| {
-                    let _t = s.spawn(|| {
-                        match sender.send(Ok(libredox::call::read(child_scheme, read_buf))) {
-                            Ok(result) => {
-                                return result;
-                            }
+                child_scheme
+            };
 
-                            Err(_) => {}
-                        }
-                    });
-                });
-                let result = receiver.recv_timeout(Duration::from_millis(500));
-                libredox::call::close(child_scheme);
-                warn!("timed out? {:#?}", result);
-                return Ok(0);
-            }
+            // read from the scheme with a timeout
+            let (sender, receiver) = mpsc::channel::<Result<usize>>();
+            let read_thread = thread::spawn(move || {
+                let thread_buf: &mut [u8; 64] = &mut [0; 64];
+                match sender.send(libredox::call::read(read_scheme, thread_buf)) {
+                    Ok(result) => {
+                        return *thread_buf;
+                    }
+
+                    Err(_) => {
+                        return *thread_buf;
+                    }
+                }
+            });
+            info!("DIDNT BLOCK");
+            let final_res = match receiver.recv_timeout(Duration::from_millis(50)) {
+                Ok(result) => {
+                    read_buf.clone_from_slice(&read_thread.join().expect("didn't join!?")[0..8]);
+                    warn!("READ DID NOT TIME OUT");
+                    result
+                }
+                Err(_timeout_err) => {
+                    warn!("READ TIMED OUT");
+                    Err(Error::new(EBADF))
+                }
+            };
+            // Another idea without mpsc::channel, this doesn't work either. I think spawning a subprocess with process::Command() could work like this.
+            // thread::sleep(Duration::from_millis(100));
+            // if read_thread.is_finished() {
+            //     read_buf.clone_from_slice(&read_thread.join().expect("didn't join!?")[0..8]);
+            //     Ok(0)
+            // } else {
+            //     kill(read_thread.id());
+            // }
+            let _close_res = libredox::call::close(read_scheme);
+
+            return final_res;
         }
         // if we failed to open the base scheme
         _ => {
@@ -554,15 +573,24 @@ fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Resul
     }
 }
 
-fn wHelper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) {
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("could not open child/service base scheme");
-    let subscheme = libredox::call::dup(child_scheme, subscheme_name.as_bytes()).expect("could not dup fd");
+fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) {
+    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0)
+        .expect("could not open child/service base scheme");
+    let subscheme =
+        libredox::call::dup(child_scheme, subscheme_name.as_bytes()).expect("could not dup fd");
     libredox::call::write(subscheme, data.as_bytes()).expect("could not write to scheme");
     libredox::call::close(subscheme);
 }
 
 fn extract_bytes(data_vec: &Vec<GenericData>) -> Vec<u8> {
-    data_vec.iter()
-        .filter_map(|d| if let GenericData::Byte(b) = d { Some(*b) } else { None })
+    data_vec
+        .iter()
+        .filter_map(|d| {
+            if let GenericData::Byte(b) = d {
+                Some(*b)
+            } else {
+                None
+            }
+        })
         .collect()
 }

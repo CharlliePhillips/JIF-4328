@@ -6,4 +6,8 @@
         "source/service-monitor/Cargo.toml",
         "source/services/Cargo.toml",
     ]
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> e872f2a (realized why rust-analyzer didn't work right in here, timeout code not working but cleaned up and compiles)
