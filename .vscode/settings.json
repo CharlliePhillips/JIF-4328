@@ -1,0 +1,9 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "source/gtrand/Cargo.toml",
+        "source/gtrand2/Cargo.toml",
+        "source/service-base/Cargo.toml",
+        "source/service-monitor/Cargo.toml",
+        "source/services/Cargo.toml",
+    ]
+}
