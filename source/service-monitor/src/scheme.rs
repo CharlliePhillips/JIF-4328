@@ -4,25 +4,28 @@ use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
 use log::info;
 use redox_scheme::Scheme;
 use syscall::{error::*, MODE_CHR};
+use shared::{RegistryCommand, SMCommand};
 
 //use std::fs::File;
 // Ty is to leave room for other types of monitor schemes
 // maybe an int or enum for the command, string buffer for service name?
 
-// todo: replace cmd u32 in SMScheme with enum we can reuse and better define
-// pub enum Cmd {
-//     Start(String),
-//     Stop(String),
-//     List
-// }
-
 
 pub struct SMScheme {
-    pub cmd: u32, 
-    pub arg1: String,
-    pub pid_buffer: Vec<u8>, 
-    pub info_buffer: Vec<u8>,
-    pub list_buffer: Vec<u8>,
+    pub cmd: Option<SMCommand>,
+    pub response_buffer: Vec<u8>,
+}
+
+impl SMScheme {
+    //temp for getting some stuff to work
+    fn read_buffer(&mut self, buf: &mut [u8]) -> Result<usize> {
+        let size = std::cmp::min(buf.len(), self.response_buffer.len());
+        buf[..size].copy_from_slice(&self.response_buffer[..size]);
+        //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
+        self.cmd = None; // unlike the other commands, needs to fix cmd here instead of in main
+        Ok(size)
+    }
+    
 }
 
 impl Scheme for SMScheme {
@@ -40,107 +43,30 @@ impl Scheme for SMScheme {
     }
 
     fn read(&mut self, _file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        //if self.cmd == 3 {
-        //  for each 8 bytes in buf:
-        //      buf[8 bytes] = pid; (usize = 64 bits or 8 bytes)
-        //  Ok(buf.length())
-        //}
-        // in services/main.rs smth like
-        // Ok(buffer_size) = read(sm_fd, pid_buffer)
-        // for each 8 bytes in pid_buffer print as usize;
-        //Ok(0)
-
-        info!("Read called with cmd: {}", self.cmd);
-        match self.cmd {
-            3 => {
-                if buf.len() >= 4 {
-                    let size = std::cmp::min(buf.len(), self.pid_buffer.len());
-                    buf[..size].copy_from_slice(&self.pid_buffer[..size]);
-                    info!("Read {} bytes from pid_buffer: {:?}", size, &buf[..size]);
-                
-                    self.cmd = 0; //unlike the other commands, needs to fix cmd here instead of in main
-                    Ok(size)
-                } else {
-                    return Err(Error::new(EINVAL));
+        match &self.cmd {
+            Some(SMCommand::List) | Some(SMCommand::Info { .. }) => {
+                return self.read_buffer(buf);
+            }
+            Some(SMCommand::Registry{subcommand}) => {
+                match subcommand {
+                    RegistryCommand::View { .. } => {
+                        return self.read_buffer(buf);
+                        
+                    }
+                    _ => Ok(0)
                 }
             }
-
-            5 => {
-                let size = std::cmp::min(buf.len(), self.info_buffer.len());
-                buf[..size].copy_from_slice(&self.info_buffer[..size]);
-                //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
-
-                self.cmd = 0;
-                self.arg1 = "".to_string();
-                Ok(size)
-            }
-            _ => Ok(0),
+            _ => Ok(0)
         }
-        
     }
-
-
+    
 
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        //if buf contains "stop" set command = 1
-        let mut r = 0;
-        //println!("service-monitor command buffer: {buffer:#?}");
-
-        match &buffer[0..5] {
-            b"stop " => {
-                self.cmd = 1;
-                let mut idx: usize = 5;
-                while(buffer[idx] != b';') {
-                    self.arg1.push(buffer[idx] as char);
-                    idx += 1;
-                }
-                
-                r = 1;
-            }
-
-            b"start" => {
-                self.cmd = 2;
-                let mut idx: usize = 6;
-                while(buffer[idx] != b';') {
-                    self.arg1.push(buffer[idx] as char);
-                    idx += 1;
-                }
-                r = 2;
-            }
-
-            b"list " => {
-                self.cmd = 3;
-                r = 3;
-            }
-
-            b"clear" => {
-                self.cmd = 4;
-                let mut idx: usize = 6;
-
-                while(buffer[idx] != b';') {
-                    self.arg1.push(buffer[idx] as char);
-                    idx += 1;
-                }
-                r = 4;
-            }
-
-            b"info " => {
-                self.cmd = 5;
-                let mut idx: usize = 5;
-                while(buffer[idx] != b';') {
-                    self.arg1.push(buffer[idx] as char);
-                    idx += 1;
-                }
-                r = 5;
-            }
-
-            _ => {
-                self.cmd = 0;
-                r = 0;
-            }
-        }
-
-        Ok(r)       
+        self.cmd = match SMCommand::from_bytes(buffer) {
+            Ok(cmd) => Some(cmd),
+            Err(_) => None
+        };
+        Ok(0)       
     }
 
     fn fcntl(&mut self, _id: usize, _cmd: usize, _arg: usize) -> Result<usize> {

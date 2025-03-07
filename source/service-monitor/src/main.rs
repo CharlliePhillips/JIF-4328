@@ -2,6 +2,7 @@ use libredox::{call::{open, read, write}, flag::*};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
+use shared::{SMCommand, RegistryCommand};
 use std::{str, borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
 use hashbrown::HashMap;
 use scheme::SMScheme;
@@ -13,8 +14,7 @@ mod registry;
 use registry::{read_registry, view_entry, add_entry, rm_entry, ServiceEntry};
 
 
-enum GenericData
-{
+enum GenericData {
     Byte(u8),
     Short(u16),
     Int(u32),
@@ -80,11 +80,8 @@ fn main() {
         let socket = Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
         let mut sm_scheme = SMScheme{
-            cmd: 0,
-            arg1: String::from(""),
-            pid_buffer: Vec::new(), //used in list, could be better as the BTreeMap later?
-            info_buffer: Vec::new(),
-            list_buffer: Vec::new(),
+            cmd: None,
+            response_buffer: Vec::new(),
         };
         
         info!("service-monitor daemonized with pid: {}", std::process::id());
@@ -130,40 +127,34 @@ fn main() {
     .expect("service-monitor: failed to daemonize");
 }
 
+// todo: automatically reset sm_scheme.cmd without having to do it in every branch condition
+// todo: figure out how to unify resets to sm_scheme.cmd (currently split btwn here and services/main.rs)
 /// Checks if the service-monitor's command value has been changed and performs the appropriate action.
 /// Currently supports the following commands:
 /// - stop: check if service is running, if it is then get pid and stop
 /// - start: check if service is running, if not build command from registry and start
 /// - list: get all pids from managed services and return them to CLI
 fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
-    const CMD_STOP: u32 = 1;
-    const CMD_START: u32 = 2;
-    const CMD_LIST: u32 = 3;
-    const CMD_CLEAR: u32 = 4;
-    const CMD_INFO: u32 = 5;
-
-
-    match sm_scheme.cmd {
-        CMD_STOP => {
-            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+    match &sm_scheme.cmd {
+        Some(SMCommand::Stop { service_name }) => {
+            if let Some(service) = services.get_mut(service_name) {
                 if service.running {
                     info!("trying to kill pid {}", service.pid);
-                    let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
+                    let kill_ret = syscall::call::kill(service.pid, syscall::SIGKILL);
                     service.running = false;
                 } else {
                     warn!("stop failed: {} was already stopped", service.name);
                 }
             } else {
-                warn!("stop failed: no service named '{}'", sm_scheme.arg1);
+                warn!("stop failed: no service named '{}'", service_name);
             }
-            //reset the current command value
-            sm_scheme.cmd = 0;
-            sm_scheme.arg1 = "".to_string();
+            // reset the current command value
+            sm_scheme.cmd = None;
         },
-        CMD_START => {
-            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+        Some(SMCommand::Start { service_name }) => {
+            if let Some(service) = services.get_mut(service_name) {
                 // can add args here later with '.arg()'
-                if (!service.running) {
+                if !service.running {
                     match std::process::Command::new(service.name.as_str()).spawn() {
                         Ok(mut child) => {
                             //service.pid = child.id().try_into().unwrap();
@@ -196,7 +187,10 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     };
                 } else {
                     warn!("service: '{}' is already running", service.name);
-                    test_service_data(service);
+                    // we only want to trigger this test on gtrand2 so it will only work when starting gtrand2 twice
+                    if (service.name == "gtrand2") {
+                        test_timeout(service);
+                    }
 
                     // When we actually report the total number of reads/writes, it should actually be the total added
                     // to whatever the current value in the service is, the toal stored in the service monitor is
@@ -204,15 +198,14 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     info!("total reads: {}, total writes: {}", service.total_reads, service.total_writes);
                 }
             } else {
-                warn!("start failed: no service named '{}'", sm_scheme.arg1);
+                warn!("start failed: no service named '{}'", service_name);
             }
-            //reset the current command value
-            sm_scheme.cmd = 0;
-            sm_scheme.arg1 = "".to_string();
+            // reset the current command value
+            sm_scheme.cmd = None;
         },
-        CMD_LIST => {
-            let mut servList: Vec<usize> = Vec::new();
-            let mut endString:String = "Name | PID | Uptime | Message | Status\n".to_string();
+        Some(SMCommand::List) => {
+            let mut serv_list: Vec<usize> = Vec::new();
+            let mut end_string: String = "Name | PID | Uptime | Message | Status\n".to_string();
             
             //let mut listString = "";
             //hashmap_bytes(services, sm_scheme);
@@ -231,30 +224,30 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     let seconds_with_millis = format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
                     let uptime_string = format!("{} hours, {} minutes, {} seconds", hours, minutes, seconds_with_millis);
                     
-                    let listString = format!("{} | {} | {} | {} | Running\n", service.name, service.pid, uptime_string, service.message);
-                    info!("line: {}", listString);
-                    endString.push_str(&listString);
+                    let list_string = format!("{} | {} | {} | {} | Running\n", service.name, service.pid, uptime_string, service.message);
+                    info!("line: {}", list_string);
+                    end_string.push_str(&list_string);
                     
-                    info!("End: {}", endString);
-                    info!("{:#?}", sm_scheme.list_buffer.as_ptr());
+                    info!("End: {}", end_string);
+                    info!("{:#?}", sm_scheme.response_buffer.as_ptr());
                 } else {
-                    let listString = format!("{} | none | none | none | not running\n", service.name);
+                    let list_string = format!("{} | none | none | none | not running\n", service.name);
                 }
             }
                 
-            sm_scheme.list_buffer = endString.as_bytes().to_vec();
+            sm_scheme.response_buffer = end_string.as_bytes().to_vec();
+            // ! do not reset the current command value -> wait for scheme.rs to handle it
         },
-        CMD_CLEAR => {
-            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+        Some(SMCommand::Clear { service_name }) => {
+            if let Some(service) = services.get_mut(service_name) {
                 info!("Clearing short-term stats for '{}'", service.name);
                 clear(service);
             }
-
-            sm_scheme.cmd = 0;
-            sm_scheme.arg1 = "".to_string();
+            // reset the current command value
+            sm_scheme.cmd = None;
         },
-        CMD_INFO => {
-            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
+        Some(SMCommand::Info { service_name }) => {
+            if let Some(service) = services.get_mut(service_name) {
                 if service.running {
                     info!("found service: {}, grabbing info now", service.name);
 
@@ -289,20 +282,43 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     //info!("~sm info string: {:#?}", info_string);
 
                     // set the info buffer to the formatted info string
-                    sm_scheme.info_buffer = info_string.as_bytes().to_vec();
+                    sm_scheme.response_buffer = info_string.as_bytes().to_vec();
 
                 } else {
                     // it should not fail to provide info, so this will need to be changed later
                     warn!("info failed: {} is not running", service.name);
-                    sm_scheme.cmd = 0;
-                    sm_scheme.arg1 = "".to_string();
+                    // reset the current command value
+                    sm_scheme.cmd = None;
                 }
             } else {
-                warn!("info failed: no service named '{}'", sm_scheme.arg1);
-                sm_scheme.cmd = 0;
-                sm_scheme.arg1 = "".to_string();
+                warn!("info failed: no service named '{}'", service_name);
+                // reset the current command value
+                sm_scheme.cmd = None;
             }
         },
+        Some(SMCommand::Registry { subcommand }) => {
+            match subcommand {
+                RegistryCommand::View { service_name } => {
+                    let service_string = view_entry(service_name);
+                    sm_scheme.response_buffer = service_string.as_bytes().to_vec();
+                },
+                RegistryCommand::Add { service_name, old } => {
+                //  add_entry(service_name, r#type, args, scheme_path, depends);
+                    sm_scheme.cmd = None;
+                },
+                RegistryCommand::Remove { service_name } => {
+                    rm_entry(service_name);
+                    sm_scheme.cmd = None;
+                },
+                RegistryCommand::Edit { service_name } => {
+                    sm_scheme.cmd = None;
+                },
+                //TODO: Add Edit
+            }
+            
+            
+        },
+        None => {},
         _ => {}
     }
 }
@@ -405,87 +421,15 @@ fn clear(service: &mut ServiceEntry) {
     libredox::call::close(child_scheme).expect("failed to close child");
 }
 
-fn test_service_data(service: &mut ServiceEntry) {
-    warn!("testing service data!");
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("could not open child/service base scheme"); //for fstat
-    
-    let read_buffer_rand: &mut [u8] = &mut [b'0'; 1024];
-    rHelper(service, read_buffer_rand, "");
-    
-    let mut rand_bytes = [0; 8];
-    for mut i in 0..8 {
-        rand_bytes[i] = read_buffer_rand[i];
-    }
-    
-    // get and print a random integer showing we can still read from gtrand's main scheme
-    let rand_int = i64::from_ne_bytes(rand_bytes);
-    info!("Read a random integer: {:#?}", rand_int);
+fn test_timeout(gtrand2: &mut ServiceEntry) {
+    let timeout_req =  "timeout";
+    wHelper(gtrand2, "", timeout_req);
+    let read_buf = &mut [b'0';32];
 
-    // set the request that we want and write it to the scheme
-    let req = "request_count";
-    let time = "time_stamp";
-    let message = "message";
-    
-
-    let read_buffer_time: &mut [u8] = &mut [b'0'; 1024];
-    rHelper(service, read_buffer_time, time);
-    
-    let mut time_bytes = [0; 8];
-    for mut i in 0..8 {
-        time_bytes[i] = read_buffer_time[i];
-    }
-    
-    // get and print the timestamp
-    let time_int = i64::from_ne_bytes(time_bytes);
-    let time = DateTime::from_timestamp(time_int, 0).unwrap();
-    let time_string = format!("{}", time.format("%m/%d/%y %H:%M"));
-    info!("time stamp: {:#?} (UTC)", time_string);
-
-    // get and print r/w tuple assume if there is a comma char at index 8 of the read
-    // bytes then assume bytes 0-7 = tuple.0 and 9-16 are tuple.1
-    let read_buffer_reqs: &mut [u8] = &mut [b'0'; 1024];
-    rHelper(service, read_buffer_reqs, req);
-    if read_buffer_reqs[8] == b',' {
-        let mut first_int_bytes = [0; 8];
-        let mut second_int_bytes = [0; 8];
-        for mut i in 0..8 {
-            first_int_bytes[i] = read_buffer_reqs[i];
-            second_int_bytes[i] = read_buffer_reqs[i + 9];
-        }
-        let first_int = i64::from_ne_bytes(first_int_bytes);
-        let second_int = i64::from_ne_bytes(second_int_bytes);
-        info!("read requests: {:#?}", first_int);
-        info!("write requests: {:#?}", second_int);
-    }
-
-    let read_buffer_message: &mut [u8] = &mut [b'0'; 1024];
-    rHelper(service, read_buffer_message, message);
-    let mut data_string = match str::from_utf8(&read_buffer_message){
-        Ok(data) => data,
-        Err(e) => "<data not a valid string>"
-    }.to_string();
-
-    // change trailing 0 chars into empty string
-    data_string.retain(|c| c != '\0');
-    info!("data string: {:#?}", data_string);
-
-    // lets mess around and test one of the other main scheme methods
-    // if neither panics it can be assumed the main scheme (child_scheme) got both
-
-    // this works
-    let Ok(child_size) = libredox::call::fstat(child_scheme) else {panic!()};
-    // this does not, the main scheme checks the id
-    //let Ok(time_size) = libredox::call::fstat(time_scheme) else {panic!()};
-
-
-    //lets test some registry stuff
-    view_entry(service.name.as_str());
-    //add_entry(service.name.as_str(), service.r#type.as_str(), &service.args, service.scheme_path.as_str(), &service.depends);
-    //silly check, but if we make this a -o flag then we'd want a separate case for it
-    //add_entry(service.name.as_str(), "-o", &service.args, service.scheme_path.as_str(), &service.depends);
-
-    //rm test
-    rm_entry("gtrand2");
+    // for now we expect this to hang, 
+    rHelper(gtrand2, read_buf,"");
+    // future success? message
+    info!("gtrand 2 timed out!");
 }
 
 fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) {
