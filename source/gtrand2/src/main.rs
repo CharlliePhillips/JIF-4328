@@ -411,7 +411,7 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
 
     libredox::call::setrens(0, 0).expect("randd: failed to enter null namespace");
 
-    scheme.message("starting!");
+     let _ = scheme.message("starting!");
 
     while let Some(request) = socket
         .next_request(SignalBehavior::Restart)

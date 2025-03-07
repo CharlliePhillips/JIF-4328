@@ -1,6 +1,7 @@
 use std::process;
 
 use std::arch::asm;
+use std::time::Duration;
 
 use rand_chacha::ChaCha20Rng;
 use rand_core::RngCore;
@@ -387,8 +388,7 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
         .expect("randd: failed to mark daemon as ready");
 
     libredox::call::setrens(0, 0).expect("randd: failed to enter null namespace");
-    //scheme.management.start_management("started gtrand!");
-
+    let _ = scheme.message("starting!");
     while let Some(request) = socket
         .next_request(SignalBehavior::Restart)
         .expect("error reading packet")
@@ -406,6 +406,7 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
 }
 
 fn main() {
+    //std::thread::sleep(Duration::from_millis(13));
     redox_daemon::Daemon::new(daemon).expect("randd: failed to daemonize");
 }
 
