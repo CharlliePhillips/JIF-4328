@@ -288,7 +288,7 @@ impl Scheme for RandScheme {
                                            // not doing so won't make the output any less 'random'
         self.prng.fill_bytes(buf);
 
-        while (self.timeout) {
+        while self.timeout {
             // infanite loop to test timeout.
         }
 
