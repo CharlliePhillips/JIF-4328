@@ -117,6 +117,7 @@ struct RandScheme {
     // Trying to create a HashMap causes a system crash.
     // <file number, information about the open file>
     next_fd: Wrapping<usize>,
+    timeout: bool,
 }
 
 impl RandScheme {
@@ -132,6 +133,7 @@ impl RandScheme {
             },
             open_descriptors: BTreeMap::new(),
             next_fd: Wrapping(0),
+            timeout: false,
         }
     }
 
@@ -281,10 +283,20 @@ impl Scheme for RandScheme {
         self.prng.set_stream(file as u64); // Should probably find a way to re-instate the counter for this stream, but
                                            // not doing so won't make the output any less 'random'
         self.prng.fill_bytes(buf);
+
+        while (self.timeout) {
+            // infanite loop to test timeout.
+        }
+
         Ok(buf.len())
     }
 
     fn write(&mut self, file: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
+        // for service monitor timeout testing, if we write "timeout" to gtrand2 then read should also trigger an infinate loop:
+        if buf == b"timeout" {
+            self.timeout = true;
+        }
+
         // Check fd and permissions
         self.can_perform_op_on_fd(file, MODE_WRITE)?;
 

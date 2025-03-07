@@ -187,7 +187,10 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     };
                 } else {
                     warn!("service: '{}' is already running", service.name);
-                    test_service_data(service);
+                    // we only want to trigger this test on gtrand2 so it will only work when starting gtrand2 twice
+                    if (service.name == "gtrand2") {
+                        test_timeout(service);
+                    }
 
                     // When we actually report the total number of reads/writes, it should actually be the total added
                     // to whatever the current value in the service is, the toal stored in the service monitor is
@@ -396,77 +399,15 @@ fn clear(service: &mut ServiceEntry) {
     libredox::call::close(child_scheme).expect("failed to close child");
 }
 
-fn test_service_data(service: &mut ServiceEntry) {
-    warn!("testing service data!");
-    let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("could not open child/service base scheme"); //for fstat
-    
-    let read_buffer_rand: &mut [u8] = &mut [b'0'; 1024];
-    rHelper(service, read_buffer_rand, "");
-    
-    let mut rand_bytes = [0; 8];
-    for mut i in 0..8 {
-        rand_bytes[i] = read_buffer_rand[i];
-    }
-    
-    // get and print a random integer showing we can still read from gtrand's main scheme
-    let rand_int = i64::from_ne_bytes(rand_bytes);
-    info!("Read a random integer: {:#?}", rand_int);
+fn test_timeout(gtrand2: &mut ServiceEntry) {
+    let timeout_req =  "timeout";
+    wHelper(gtrand2, "", timeout_req);
+    let read_buf = &mut [b'0';32];
 
-    // set the request that we want and write it to the scheme
-    let req = "request_count";
-    let time = "time_stamp";
-    let message = "message";
-    
-
-    let read_buffer_time: &mut [u8] = &mut [b'0'; 1024];
-    rHelper(service, read_buffer_time, time);
-    
-    let mut time_bytes = [0; 8];
-    for mut i in 0..8 {
-        time_bytes[i] = read_buffer_time[i];
-    }
-    
-    // get and print the timestamp
-    let time_int = i64::from_ne_bytes(time_bytes);
-    let time = DateTime::from_timestamp(time_int, 0).unwrap();
-    let time_string = format!("{}", time.format("%m/%d/%y %H:%M"));
-    info!("time stamp: {:#?} (UTC)", time_string);
-
-    // get and print r/w tuple assume if there is a comma char at index 8 of the read
-    // bytes then assume bytes 0-7 = tuple.0 and 9-16 are tuple.1
-    let read_buffer_reqs: &mut [u8] = &mut [b'0'; 1024];
-    rHelper(service, read_buffer_reqs, req);
-    if read_buffer_reqs[8] == b',' {
-        let mut first_int_bytes = [0; 8];
-        let mut second_int_bytes = [0; 8];
-        for mut i in 0..8 {
-            first_int_bytes[i] = read_buffer_reqs[i];
-            second_int_bytes[i] = read_buffer_reqs[i + 9];
-        }
-        let first_int = i64::from_ne_bytes(first_int_bytes);
-        let second_int = i64::from_ne_bytes(second_int_bytes);
-        info!("read requests: {:#?}", first_int);
-        info!("write requests: {:#?}", second_int);
-    }
-
-    let read_buffer_message: &mut [u8] = &mut [b'0'; 1024];
-    rHelper(service, read_buffer_message, message);
-    let mut data_string = match str::from_utf8(&read_buffer_message){
-        Ok(data) => data,
-        Err(e) => "<data not a valid string>"
-    }.to_string();
-
-    // change trailing 0 chars into empty string
-    data_string.retain(|c| c != '\0');
-    info!("data string: {:#?}", data_string);
-
-    // lets mess around and test one of the other main scheme methods
-    // if neither panics it can be assumed the main scheme (child_scheme) got both
-
-    // this works
-    let Ok(child_size) = libredox::call::fstat(child_scheme) else {panic!()};
-    // this does not, the main scheme checks the id
-    //let Ok(time_size) = libredox::call::fstat(time_scheme) else {panic!()};
+    // for now we expect this to hang, 
+    rHelper(gtrand2, read_buf,"");
+    // future success? message
+    info!("gtrand 2 timed out!");
 }
 
 fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) {
