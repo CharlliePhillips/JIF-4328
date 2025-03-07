@@ -1,94 +1,46 @@
 use std::{borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Command, Stdio}};
-use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};  
-    
+use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
+use clap::{Parser, Subcommand, Args};    
+use shared::SMCommand;
+
+
+#[derive(Parser)]
+#[command(version, about, long_about = None, disable_help_subcommand = true)]
+struct Cli {
+    #[command(subcommand)]
+    cmd: SMCommand,
+}
+
+// todo: replace with Clap crate for robust parsing and help-text
+// todo: report back if service-name is invalid in start, stop commands
 fn main() {
-    //https://rust-cli.github.io/book/tutorial/cli-args.html
-    let arg1 = std::env::args().nth(1).expect("no arg1 given");
-    println!("arg1: {}", arg1);
-    let mut cmd_buf: Vec<u8> = arg1.clone().into_bytes();
-
-    match arg1.as_str() {
-        "stop" => {
-            let arg2 = std::env::args().nth(2).expect("no arg2 given");
-            for b in format!(" {};", arg2).as_bytes() {
-                cmd_buf.push(*b);
-            }
-        }
-
-        "start" => {
-            let arg2 = std::env::args().nth(2).expect("no arg2 given");
-            for b in format!(" {};", arg2).as_bytes() {
-                cmd_buf.push(*b);
-            }
-        }
-
-        "list" => {
-            for b in format!(" ;").as_bytes() {
-                cmd_buf.push(*b);
-            }
-
-        }
-
-        "info" => {
-            let arg2 = std::env::args().nth(2).expect("no arg2 given");
-            for b in format!(" {};", arg2).as_bytes() {
-                cmd_buf.push(*b);
-            }
-        }
-
-        "clear" => {
-            let arg2 = std::env::args().nth(2).expect("no arg2 given");
-            for b in format!(" {};", arg2).as_bytes() {
-                cmd_buf.push(*b);
-            }
-        }
-
-        _ => {
-            println!("invalid arguments arg1: {:?}", arg1);
-            return;
-        }
-    };
+    let cli = Cli::parse();
 
     let Ok(sm_fd) = &mut OpenOptions::new().write(true)
     .open("/scheme/service-monitor") else {panic!()};
 
-    let success = File::write(sm_fd, &cmd_buf).expect("failed to write command to service monitor");
-    
-    match success {
-        //special case for list
-        3 => {
-            //need to handle similar to 4 width
-            let mut list_buffer = vec![0u8; 1024]; //1024 is kinda arbitrary here, may cause issues later
-            let size = File::read(sm_fd, &mut list_buffer).expect("failed to read Service List from service monitor");
-            list_buffer.truncate(size);
+    let success = File::write(sm_fd, &cli.cmd.to_bytes()).expect("Failed to write command to service monitor");
 
-            let mut data_string = match std::str::from_utf8(&list_buffer){
-                Ok(data) => data,
-                Err(e) => "<data not a valid string>"
-            }.to_string();
-            data_string.retain(|c| c != '\0');
-
-            println!("{}", data_string);
-        },
-
-        //special case for info
-        5 => {
-            let mut full_info_buffer = vec![0u8; 1024]; // may be too small for this command down the line, should be dynamically sized?
-            let size = File::read(sm_fd, &mut full_info_buffer).expect("failed to read info from service monitor");
-            full_info_buffer.truncate(size);
-            let mut data_string = match std::str::from_utf8(&full_info_buffer){
-                Ok(data) => data,
-                Err(e) => "<data not a valid string>"
-            }.to_string();
-            data_string.retain(|c| c != '\0');
-
-            println!("{}", data_string);
-        },
-
-
-        _ => println!("write command returned value: {success:#?}")
+    if success == 0 {
+        print_response(&cli.cmd, sm_fd);
     }
+}
 
-    
+fn print_response(cmd: &SMCommand, sm_fd: &mut File) {
+    match cmd {
+        SMCommand::List | SMCommand::Info { service_name: _ } => {
+            let mut response_buffer = vec![0u8; 1024]; // 1024 is kinda arbitrary here, may cause issues later
+            let size = File::read(sm_fd, &mut response_buffer).expect("Failed to read PIDs from service monitor");
+            response_buffer.truncate(size);
 
+            let mut data_string = match std::str::from_utf8(&response_buffer){
+                Ok(data) => data,
+                Err(e) => "<data not a valid string>"
+            }.to_string();
+            data_string.retain(|c| c != '\0');
+
+            println!("{}", data_string);
+        }
+        _ => {}
+    }
 }
