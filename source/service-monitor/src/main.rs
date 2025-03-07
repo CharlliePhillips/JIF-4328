@@ -167,6 +167,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     info!("trying to kill pid {}", service.pid);
                     let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
                     service.running = false;
+                    service.pid = 0;
                 } else {
                     warn!("stop failed: {} was already stopped", service.name);
                 }
@@ -184,19 +185,19 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     service.time_started = Local::now().timestamp_millis();
                     match std::process::Command::new(service.name.as_str()).spawn() {
                         Ok(mut child) => {
-                            //service.pid = child.id().try_into().unwrap();
-                            //service.pid += 2;
                             child.wait();
-                            let child_scheme =
-                                libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
-                                    .expect("couldn't open child scheme");
-                            let pid_req = b"pid";
-                            let pid_scheme = libredox::call::dup(child_scheme, pid_req)
-                                .expect("could not get pid");
 
                             let read_buffer: &mut [u8] = &mut [b'0'; 32];
-                            libredox::call::read(pid_scheme, read_buffer)
-                                .expect("could not read pid");
+                            match read_helper(service, read_buffer, "pid") {
+                                Ok(_usize) => {
+                                    // do nothing, we have the buffer
+                                }
+                                Err(_) => {
+                                    // do nothing for now, the fact that we failed to get the PID means we failed to start
+                                    // the user should be informed
+                                    return;
+                                }
+                            }
                             // process the buffer based on the request
                             let mut pid_bytes: [u8; 8] = [0; 8];
                             for mut i in 0..8 {
@@ -483,7 +484,13 @@ fn clear(service: &mut ServiceEntry) {
 fn test_timeout(gtrand2: &mut ServiceEntry) {
     let read_buf = &mut [b'0'; 8];
     // make sure we can read
-    read_helper(gtrand2, read_buf, "");
+    match read_helper(gtrand2, read_buf, "") {
+        Ok(_usize) => {}
+        Err(_) => {
+            warn!("first read in test_timeout() failed, exiting test");
+            return
+        }
+    }
     info!("read random {:#?} from gtrand2, forcing timeout...", i64::from_ne_bytes(*read_buf));
     let timeout_req = "timeout";
     write_helper(gtrand2, "", timeout_req);
@@ -525,9 +532,9 @@ fn test_err(gtrand2: &mut ServiceEntry) {
 
 fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Result<usize> {
     let mut try_again = true;
-    let mut recovered = false;
     let mut result: Result<usize> = Err(Error::new(EBADF));
     while try_again {
+        try_again = false;
         result = match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
             Ok(child_scheme) => {
                 // determine which scheme we are trying to read from
@@ -555,17 +562,13 @@ fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> R
                         }
                     });
                     thread::sleep(Duration::from_millis(50));
-                    //if recovered {
-                    //    assert!(receiver.recv().unwrap() == Err(Error::new(EBADF)));
-                    //    warn!("recieved: {:#?}", receiver.try_recv());
-                    //}
                     result = match receiver.try_recv() {
                         Ok(result) => {
                             // dropping the reciever here should intterupt the sender's thread, stop trying to read and return
                             drop(receiver);
+                            // this can still copy any data written to the buffer before the read timed out.
                             read_buf.clone_from_slice(&read_thread.join().expect("didn't join!?")[0..read_buf.len()]);
                             let _close_res = libredox::call::close(read_scheme);
-                            try_again = false;
                             result
                         }
                         Err(_recv_err) => {
@@ -574,7 +577,6 @@ fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> R
                             // attempt to recover the service, once this returns, if the service is still running then it has ben successfully recovered
                             if recover(service) {
                                 try_again = true;
-                                recovered = true;
                             } 
                             let _close_res = libredox::call::close(read_scheme);
                             Err(Error::new(EBADF))
@@ -602,24 +604,22 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) {
 }
 
 fn recover(service: &mut ServiceEntry) -> bool { 
+    let last_start = Local.timestamp_millis_opt(service.time_started).unwrap();
+    let curr_time = Local::now();
+    // this covers the cases where we are trying to get a pid while starting elsewhere or if we try to restart something too quickly
+    if curr_time.signed_duration_since(last_start).num_milliseconds() < 750 || service.pid == 0 {
+        return service.running;
+    }
+    
     let _kill_res = syscall::kill(service.pid, syscall::SIGKILL);
     service.running = false;
+    service.pid = 0;
+    
     service.time_started = Local::now().timestamp_millis(); // where should this go for the start command?
     let running = match std::process::Command::new(service.name.as_str()).spawn() {
         Ok(mut child) => {
             child.wait();
-
-            let child_scheme =
-                libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
-                    .expect("couldn't open child scheme");
-            let pid_req = b"pid";
-            let pid_scheme = libredox::call::dup(child_scheme, pid_req)
-                .expect("could not get pid");
-
             let read_buffer: &mut [u8] = &mut [b'0'; 32];
-            libredox::call::read(pid_scheme, read_buffer)
-                .expect("could not read pid");
-
             let _recover_res = match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
                 Ok(child_scheme) => {
                     // determine which scheme we are trying to read from
@@ -657,6 +657,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
                             // for now just kill the service that timed out and return an error
                             syscall::call::kill(service.pid, syscall::SIGKILL);
                             service.running = false;
+                            service.pid = 0;
                             Err(Error::new(EBADF))
                         }
                     };
@@ -679,7 +680,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
         }
 
         Err(_e) => {
-            warn!("start failed: could not restart {}", service.name);
+            warn!("could not recover {}!", service.name);
             service.running
         }
     };
