@@ -1,8 +1,11 @@
 [package]
 name = "services"
-version = "0.0.0"
-authors = ["Charlie Phillips <charlie_l_phillips@proton.me>", ]
+version = "0.1.0"
+description = "The command-line interface for the Redox service monitor"
+authors = ["Charlie Phillips <charlie_l_phillips@proton.me>", "Donald Nelson <s.donald.nelson@gmail.com>"]
 edition = "2021"
 
 [dependencies]
 libredox = "0.1.3"
+clap = { version = "4.5", features = ["derive"] }
+shared = { version = "0.1.0", path = "../shared" }
