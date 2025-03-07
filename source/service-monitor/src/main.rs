@@ -146,92 +146,24 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     match sm_scheme.cmd {
 
         CMD_STOP => {
-            /*
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                 info!("Stopping '{}'", service.name);
-                stop(service);
+                stop(service, sm_scheme);
             } else {
                 warn!("stop failed: no service named '{}'", sm_scheme.arg1);
                 sm_scheme.cmd = 0;
                 sm_scheme.arg1 = "".to_string();
             }
-            */
-
-            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
-                if service.running {
-                    info!("trying to kill pid {}", service.pid);
-                    let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
-                    service.running = false;
-                } else {
-                    warn!("stop failed: {} was already stopped", service.name);
-                }
-            } else {
-                warn!("stop failed: no service named '{}'", sm_scheme.arg1);
-            }
-            //reset the current command value
-            sm_scheme.cmd = 0;
-            sm_scheme.arg1 = "".to_string();
         },
         CMD_START => {
-            /*
             if let Some(service) = services.get_mut(&sm_scheme.arg1) {
                 info!("Starting '{}'", service.name);
-                start(service);
+                start(service, sm_scheme);
             } else {
                 warn!("start failed: no service named '{}'", sm_scheme.arg1);
                 sm_scheme.cmd = 0;
                 sm_scheme.arg1 = "".to_string();
             }
-            */
-
-            if let Some(service) = services.get_mut(&sm_scheme.arg1) {
-                // can add args here later with '.arg()'
-                if (!service.running) {
-                    match std::process::Command::new(service.name.as_str()).spawn() {
-                        Ok(mut child) => {
-                            //service.pid = child.id().try_into().unwrap();
-                            //service.pid += 2;
-                            service.time_started = Local::now().timestamp_millis(); // where should this go for the start command?
-                            child.wait();
-                            let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
-                                .expect("couldn't open child scheme");
-                            let pid_req = b"pid";
-                            let pid_scheme = libredox::call::dup(child_scheme, pid_req).expect("could not get pid");
-                            
-                            let read_buffer: &mut [u8] = &mut [b'0'; 32];
-                            libredox::call::read(pid_scheme, read_buffer).expect("could not read pid");
-                            // process the buffer based on the request
-                            let mut pid_bytes: [u8; 8] = [0; 8];
-                            for mut i in 0..8 {
-                                //info!("byte {} reads {}", i, read_buffer[i]);
-                                pid_bytes[i] = read_buffer[i];
-                                i += 1;
-                            }
-                            let pid = usize::from_ne_bytes(pid_bytes);
-                            service.pid = pid;
-                            info!("child started with pid: {:#?}", service.pid);
-                            service.running = true;
-                        },
-    
-                        Err(e) => {
-                            warn!("start failed: could not start {}", service.name);
-                        }
-                    };
-                } else {
-                    warn!("service: '{}' is already running", service.name);
-                    test_service_data(service);
-
-                    // When we actually report the total number of reads/writes, it should actually be the total added
-                    // to whatever the current value in the service is, the toal stored in the service monitor is
-                    // updated when the service's count is cleared.
-                    info!("total reads: {}, total writes: {}", service.total_reads, service.total_writes);
-                }
-            } else {
-                warn!("start failed: no service named '{}'", sm_scheme.arg1);
-            }
-            //reset the current command value
-            sm_scheme.cmd = 0;
-            sm_scheme.arg1 = "".to_string();
         },
         CMD_LIST => {
             list(services, sm_scheme);
@@ -310,9 +242,9 @@ fn update_service_info(service: &mut ServiceEntry) {
 
 
 
-/*
 
-fn stop(service: &mut ServiceEntry) {
+
+fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     if service.running {
         info!("trying to kill pid {}", service.pid);
         let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
@@ -327,7 +259,7 @@ fn stop(service: &mut ServiceEntry) {
 
 
 
-fn start(service: &mut ServiceEntry) {
+fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     // can add args here later with '.arg()'
     if (!service.running) {
         match std::process::Command::new(service.name.as_str()).spawn() {
@@ -374,7 +306,7 @@ fn start(service: &mut ServiceEntry) {
     sm_scheme.arg1 = "".to_string();
 }
 
-*/
+
 
 
 
