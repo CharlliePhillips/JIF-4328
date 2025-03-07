@@ -283,7 +283,7 @@ fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         };
     } else {
         warn!("service: '{}' is already running", service.name);
-        test_service_data(service);
+        //test_service_data(service);
 
         // When we actually report the total number of reads/writes, it should actually be the total added
         // to whatever the current value in the service is, the toal stored in the service monitor is
@@ -312,7 +312,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         //info!("~sm info string: {:#?}", info_string);
 
         // set the info buffer to the formatted info string
-        sm_scheme.info_buffer = info_string.as_bytes().to_vec();
+        sm_scheme.response_buffer = info_string.as_bytes().to_vec();
 
     } else {
         // it should not fail to provide info, so this will need to be changed later
@@ -338,13 +338,13 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSchem
             endString.push_str(&listString);
             
             info!("End: {}", endString);
-            info!("{:#?}", sm_scheme.list_buffer.as_ptr());
+            info!("{:#?}", sm_scheme.response_buffer.as_ptr());
         } else {
             let listString = format!("{} | none | none | none | not running\n", service.name);
         }
     }
         
-    sm_scheme.list_buffer = endString.as_bytes().to_vec();
+    sm_scheme.response_buffer = endString.as_bytes().to_vec();
 
 }
 
