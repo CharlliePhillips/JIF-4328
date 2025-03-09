@@ -183,4 +183,23 @@ pub fn rm_entry(name: &str) { //later on once view returns a buffer, rm could us
         println!("Service not found in registry");
     }
 }
+
+pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: & str) {
+    let mut services_toml = read_registry();
+    if let Some(entry) = services_toml.get(name) {
+        println!("Service is still present in registry, unable to remove from internal list");
+    } else {
+        if services.contains_key(name) {    
+            let mut entry = services.get(name).unwrap();
+            if entry.running {
+                println!("Cannot remove an entry that is currently running");
+            } else {
+                services.remove(name);
+                println!("Removing service from internal list");
+            }
+        } else {
+            println!("Cannot find entry in internal list to remove");
+        }
+    }
+}
 //add old, add new, rm, view
