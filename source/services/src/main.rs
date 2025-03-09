@@ -19,7 +19,8 @@ fn main() {
     let Ok(sm_fd) = &mut OpenOptions::new().write(true)
     .open("/scheme/service-monitor") else {panic!()};
 
-    let success = File::write(sm_fd, &cli.cmd.to_bytes()).expect("Failed to write command to service monitor");
+    let cmd_bytes = &cli.cmd.encode().expect("Failed to encode command to byte buffer");
+    let success = File::write(sm_fd, &cmd_bytes).expect("Failed to write command to service monitor");
 
     if success == 0 {
         print_response(&cli.cmd, sm_fd);

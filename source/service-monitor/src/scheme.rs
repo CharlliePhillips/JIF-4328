@@ -62,7 +62,7 @@ impl Scheme for SMScheme {
     
 
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        self.cmd = match SMCommand::from_bytes(buffer) {
+        self.cmd = match SMCommand::decode(buffer) {
             Ok(cmd) => Some(cmd),
             Err(_) => None
         };
