@@ -11,7 +11,7 @@ use chrono::prelude::*;
 use std::sync::mpsc::channel;
 mod scheme;
 mod registry;
-use registry::{read_registry, view_entry, add_entry, rm_entry, rm_hash_entry, ServiceEntry};
+use registry::{read_registry, view_entry, add_entry, rm_entry, rm_hash_entry, add_hash_entry, ServiceEntry};
 
 
 enum GenericData {
@@ -305,6 +305,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 RegistryCommand::Add { service_name, old, args, manual_override, depends, scheme_path } => {
                     let r#type = if *old { "unmanaged" } else { "daemon" };
                     add_entry(service_name, r#type, args.as_ref().unwrap(), *manual_override, scheme_path, depends.as_ref().unwrap());
+                    add_hash_entry(service_name, r#type, args.as_ref().unwrap(), *manual_override, scheme_path, depends.as_ref().unwrap(), services);
                     sm_scheme.cmd = None;
                 },
                 RegistryCommand::Remove { service_name } => {

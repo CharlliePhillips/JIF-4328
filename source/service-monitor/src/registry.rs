@@ -174,6 +174,7 @@ pub fn add_entry(
     };
     services.insert(name.to_string(), new_entry);
     write_registry(services);
+    
 }
 
 pub fn rm_entry(name: &str) {
@@ -185,8 +186,6 @@ pub fn rm_entry(name: &str) {
         println!("Service not found in registry");
     }
 }
-<<<<<<< HEAD
-=======
 
 pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: & str) {
     let mut services_toml = read_registry();
@@ -213,13 +212,15 @@ pub fn add_hash_entry(
     args: &Vec<String>,
     manual_override: bool,
     scheme_path: &str,
-    depends: &Vec<String>)
+    depends: &Vec<String>, 
+    services: &mut HashMap<String, ServiceEntry>
+)
 {
     
     if services.contains_key(name) {
         println!("Cannot add entry that is already present in internal list");
     } else {
-        let new_service = Service {
+        let new_entry = ServiceEntry {
             name: name.to_string(),
             r#type: r#type.to_string(),
             args: args.to_vec(),
@@ -241,8 +242,7 @@ pub fn add_hash_entry(
             total_closes: 0,
             total_dups: 0,  
         };
-        services.insert(newname, new_service);
+        services.insert(name.to_string(), new_entry);
     }
 }
 //add old, add new, rm, view
->>>>>>> 967c482067fb1b2849ef3d000f44ec24690ba2b5
