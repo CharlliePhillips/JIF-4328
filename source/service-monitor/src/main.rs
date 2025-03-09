@@ -304,12 +304,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 },
                 RegistryCommand::Add { service_name, old, args, manual_override, depends, scheme_path } => {
                     let r#type = if *old { "unmanaged" } else { "daemon" };
-                    println!("adding entry");
-                    println!("old: {}", old);
-                    println!("args: {:?}", args);
-                    println!("manual_override: {}", manual_override);
-                    println!("depends: {:?}", depends);
-                    println!("scheme_path: {}", scheme_path);
                     add_entry(service_name, r#type, args.as_ref().unwrap(), *manual_override, scheme_path, depends.as_ref().unwrap());
                     sm_scheme.cmd = None;
                 },

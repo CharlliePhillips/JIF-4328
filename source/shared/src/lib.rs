@@ -32,18 +32,16 @@ pub enum RegistryCommand {
         
         service_name: String, //required
 
-        // we don't need r#type, we can just use the old boolean or default to "daemon".
-        // #[arg(default_value = "daemon")]
-        // r#type: String,
+        // we don't need r#type, we can just use the old flag or default to "daemon".
         
         #[arg(value_name = "start_args", help = "Arguments for starting the daemon", value_parser = validate_args)]
         args: Option<::std::vec::Vec<String>>, //mandatory
 
-        #[arg(long = "override")]
+        #[arg(long = "override", help = "if not present, the service monitor may override the fields in the registry")]
         manual_override: bool, //this will default to false, if --override, it will be true 
         
         #[arg(value_name = "depends", help = "a list of dependencies for the daemon", value_parser = validate_args)]
-        depends: Option<::std::vec::Vec<String>>, //mandatory, should default to empty vec?
+        depends: Option<::std::vec::Vec<String>>, //mandatory
         
         scheme_path: String, //mandatory
     },
