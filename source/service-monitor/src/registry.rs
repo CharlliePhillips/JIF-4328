@@ -185,3 +185,64 @@ pub fn rm_entry(name: &str) {
         println!("Service not found in registry");
     }
 }
+<<<<<<< HEAD
+=======
+
+pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: & str) {
+    let mut services_toml = read_registry();
+    if let Some(entry) = services_toml.get(name) {
+        println!("Service is still present in registry, unable to remove from internal list");
+    } else {
+        if services.contains_key(name) {    
+            let mut entry = services.get(name).unwrap();
+            if entry.running {
+                println!("Cannot remove an entry that is currently running");
+            } else {
+                services.remove(name);
+                println!("Removing service from internal list");
+            }
+        } else {
+            println!("Cannot find entry in internal list to remove");
+        }
+    }
+}
+
+pub fn add_hash_entry(
+    name: &str,
+    r#type: &str, //if this string were to be -o, we'd write "unmanaged" instead of "daemon"
+    args: &Vec<String>,
+    manual_override: bool,
+    scheme_path: &str,
+    depends: &Vec<String>)
+{
+    
+    if services.contains_key(name) {
+        println!("Cannot add entry that is already present in internal list");
+    } else {
+        let new_service = Service {
+            name: name.to_string(),
+            r#type: r#type.to_string(),
+            args: args.to_vec(),
+            manual_override: manual_override,
+            depends: depends.to_vec(),
+            scheme_path: scheme_path.to_string(),
+            running: false,
+            pid: 0,
+            time_started: 0,
+            time_init: 0,
+            read_count: 0,
+            write_count: 0,
+            error_count: 0,
+            last_response_time: 0,
+            message: String::new(),
+            total_reads: 0, 
+            total_writes: 0,
+            total_opens: 0,
+            total_closes: 0,
+            total_dups: 0,  
+        };
+        services.insert(newname, new_service);
+    }
+}
+//add old, add new, rm, view
+>>>>>>> 967c482067fb1b2849ef3d000f44ec24690ba2b5

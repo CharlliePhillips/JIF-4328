@@ -11,7 +11,7 @@ use chrono::prelude::*;
 use std::sync::mpsc::channel;
 mod scheme;
 mod registry;
-use registry::{read_registry, view_entry, add_entry, rm_entry, ServiceEntry};
+use registry::{read_registry, view_entry, add_entry, rm_entry, rm_hash_entry, ServiceEntry};
 
 
 enum GenericData {
@@ -309,6 +309,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 },
                 RegistryCommand::Remove { service_name } => {
                     rm_entry(service_name);
+                    rm_hash_entry(services, service_name);
                     sm_scheme.cmd = None;
                 },
                 RegistryCommand::Edit { service_name } => {
