@@ -151,27 +151,53 @@ pub fn add_entry(
     name: &str,
     r#type: &str, //if this string were to be -o, we'd write "unmanaged" instead of "daemon"
     args: &Vec<String>,
+    manual_override: bool,
     scheme_path: &str,
     depends: &Vec<String>) 
 {
-    let path: &Path = Path::new("/usr/share/smregistry.toml");
-    let mut file = OpenOptions::new()
-        .write(true)
-        .append(true)
-        .open(&path)
-        .expect("Unable to open smregistry.toml");
+    let mut services = read_registry();
+    let new_entry = ServiceEntry {
+        name: name.to_string(),
+        r#type: r#type.to_string(),
+        args: args.to_vec(),
+        manual_override: manual_override,
+        depends: depends.to_vec(),
+        scheme_path: scheme_path.to_string(),
+        running: false,
+        pid: 0,
+        time_started: 0,
+        time_init: 0,
+        read_count: 0,
+        write_count: 0,
+        error_count: 0,
+        last_response_time: 0,
+        message: String::new(),
+        total_reads: 0, 
+        total_writes: 0,
+        total_opens: 0,
+        total_closes: 0,
+        total_dups: 0,
+    };
+    services.insert(name.to_string(), new_entry);
+    write_registry(services);
+    // let path: &Path = Path::new("/usr/share/smregistry.toml");
+    // let mut file = OpenOptions::new()
+    //     .write(true)
+    //     .append(true)
+    //     .open(&path)
+    //     .expect("Unable to open smregistry.toml");
 
-    let manual_override = false;
-    let mut type_str = "daemon";
-    if r#type == "-o" {
-        // old style
-        type_str = "unmanaged";
-    }
-    let new_entry_str = format!(
-        "\n\n[[service]]\nname = \"{}\"\ntype = \"{}\"\nargs = {:?}\nmanual_override = {}\ndepends = {:?}\nscheme_path = \"{}\"\n",
-        name, type_str, args, manual_override, depends, scheme_path
-    );
-    file.write_all(new_entry_str.as_bytes()).expect("Unable to write to smregistry.toml");
+    // let manual_override = false;
+    // let mut type_str = "daemon";
+    // if r#type == "-o" {
+    //     // old style
+    //     type_str = "unmanaged";
+    // }
+    // let new_entry_str = format!(
+    //     "\n\n[[service]]\nname = \"{}\"\ntype = \"{}\"\nargs = {:?}\nmanual_override = {}\ndepends = {:?}\nscheme_path = \"{}\"\n",
+    //     name, type_str, args, manual_override, depends, scheme_path
+    // );
+    // file.write_all(new_entry_str.as_bytes()).expect("Unable to write to smregistry.toml");
 }
 
 pub fn rm_entry(name: &str) { //later on once view returns a buffer, rm could use that to find the entry

@@ -302,8 +302,15 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     let service_string = view_entry(service_name);
                     sm_scheme.response_buffer = service_string.as_bytes().to_vec();
                 },
-                RegistryCommand::Add { service_name, old } => {
-                //  add_entry(service_name, r#type, args, scheme_path, depends);
+                RegistryCommand::Add { service_name, old, args, manual_override, depends, scheme_path } => {
+                    let r#type = if *old { "unmanaged" } else { "daemon" };
+                    println!("adding entry");
+                    println!("old: {}", old);
+                    println!("args: {:?}", args);
+                    println!("manual_override: {}", manual_override);
+                    println!("depends: {:?}", depends);
+                    println!("scheme_path: {}", scheme_path);
+                    add_entry(service_name, r#type, args.as_ref().unwrap(), *manual_override, scheme_path, depends.as_ref().unwrap());
                     sm_scheme.cmd = None;
                 },
                 RegistryCommand::Remove { service_name } => {

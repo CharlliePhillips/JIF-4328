@@ -262,7 +262,7 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
     - The `registry.toml` stores the commands and arguments to start a service in a .toml file. Each service should have:  
       - A service heading 
       - Name 
-      - Type - You could specify for a service to be ignored by the SM (i.e. using SM as init) by setting the Type to “application”. 
+      - Type - You could specify for a service to be ignored by the SM (i.e. using SM as init) by setting the Type to "unmanaged". 
       - Starting Arguments 
       - Manual Override – If you enter custom data into the registry.toml and do not want the Service Monitor to potentially override it then this should be set to true. Otherwise risk this information being “corrected” 
       - Depends – A list of named dependencies, this list is used to build dependency tree(s)

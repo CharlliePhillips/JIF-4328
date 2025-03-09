@@ -1,4 +1,6 @@
-use clap::Subcommand;
+use clap::{Subcommand};
+use serde::{Deserialize, Serialize};
+use regex::Regex;
 
 /// Command enum used by the services command line
 #[derive(Subcommand)]
@@ -27,7 +29,23 @@ pub enum RegistryCommand {
     Add {
         #[arg(long)]
         old: bool,
-        service_name: String,
+        
+        service_name: String, //required
+
+        // we don't need r#type, we can just use the old boolean or default to "daemon".
+        // #[arg(default_value = "daemon")]
+        // r#type: String,
+        
+        #[arg(value_name = "start_args", help = "Arguments for starting the daemon", value_parser = validate_args)]
+        args: Option<::std::vec::Vec<String>>, //mandatory
+
+        #[arg(long = "override")]
+        manual_override: bool, //this will default to false, if --override, it will be true 
+        
+        #[arg(value_name = "depends", help = "a list of dependencies for the daemon", value_parser = validate_args)]
+        depends: Option<::std::vec::Vec<String>>, //mandatory, should default to empty vec?
+        
+        scheme_path: String, //mandatory
     },
     Remove {
         service_name: String,
@@ -39,6 +57,28 @@ pub enum RegistryCommand {
         service_name: String,
     },
 }
+
+fn validate_args(s: &str) -> Result<Vec<String>, String> {
+    let mut parsed: String = String::from(s);
+    if !parsed.starts_with("args=") {
+        parsed.insert_str(0, "args=");
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct Args {
+        args: Vec<String>,
+    }
+
+    let vec: Args = match toml::from_str(&parsed) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(format!("{}\n  Expected format: ['arg0', 'arg1', ... ]", e))
+        },
+    };
+
+    return Ok(vec.args);    
+}
+
 
 impl RegistryCommand {
     pub fn name(&self) -> String {
@@ -88,13 +128,33 @@ impl SMCommand {
             SMCommand::Registry{ subcommand } => {
                 command_string.push_str(" ");
                 match subcommand {
-                    RegistryCommand::Add { service_name, old } => {
+                    RegistryCommand::Add { service_name, old, args, manual_override, depends, scheme_path } => {
 
                         command_string.push_str(subcommand.name().as_str());
                         
                         command_string.push_str(if *old {" 1 "} else {" 0 "});
 
-                        command_string.push_str(service_name);
+                        command_string.push_str(&service_name);
+
+                        command_string.push_str(if *manual_override {" 1 "} else {" 0 "});
+
+                        command_string.push_str(scheme_path);
+
+                        command_string.push_str(" ");
+
+                        
+                        let args_str = format!("{:?}", args.as_deref().unwrap_or(&vec![]));
+                        println!("ARGS");
+                        println!("{:?}", args_str);
+                        command_string.push_str(&args_str);
+
+                        command_string.push_str(" ");
+
+                        let depends_str = format!("{:?}", depends.as_deref().unwrap_or(&vec![]));
+                        println!("DEPENDS");
+                        println!("{:?}", depends_str);
+                        command_string.push_str(&depends_str);
+
                     },
                     RegistryCommand::Remove { service_name } => {
                         command_string.push_str(subcommand.name().as_str());
@@ -123,11 +183,30 @@ impl SMCommand {
             Ok(value) => value,
             Err(_) => return Err(String::from("No valid SMCommand name found in byte buffer"))
         };
-
+        //print!("{:?}", cmd_string);
         let cmd_tokens: Vec<&str> = cmd_string.split(" ").collect();
+        //let mut remaining = None;
+        // if cmd_tokens.len() > 5{
+        //     remaining = Some(cmd_tokens[5..].join(" ")); //this makes no sense to me, but it only works if I declare this here instead of the if block for add.
+        // }
+        
         if cmd_tokens.len() < 1 {
             return Err(String::from("No valid SMCommand name found in byte buffer"))
         }
+
+        // if cmd_tokens.len() > 1 && cmd_tokens[1] == "add" {
+        //     //registry is 0, add is 1, old is 2, service_name is 3, manual_override is 4, scheme_path is 5, args is 6, depends is 7
+        //     //special case break for registry add since args may have spaces, so we fix this in the same idea as cmd_tokens
+        //     //example: "registry add 0 args=['arg0', 'arg1'] 0 depends=['dep0', 'dep1'] /path/to/scheme service_name"
+            
+        //     let args_regex = Regex::new(r"(args=\[[^]]*\])").unwrap();
+        //     let depends_regex = Regex::new(r"(depends=\[[^]]*\])").unwrap();
+            
+        //     print!("{:?}", remaining);
+        //     let remaining_str = remaining.as_deref().unwrap_or("");
+        //     cmd_tokens[6] = args_regex.find(remaining_str).map(|m| m.as_str()).unwrap_or("");
+        //     cmd_tokens[7] = depends_regex.find(remaining_str).map(|s| s.as_str()).unwrap_or("");
+        // }
 
         match cmd_tokens[0] {
             "stop" => {
@@ -164,18 +243,33 @@ impl SMCommand {
                 }
                 match cmd_tokens[1] {
                     "add" => {
-                        if cmd_tokens.len() != 4 {
-                            return Err(String::from("Invalid arguments for SMCommand 'registry add'"));
+                        // if cmd_tokens.len() != 4 {
+                        //     return Err(String::from("Invalid arguments for SMCommand 'registry add'"));
+                        // }
+                        for token in &cmd_tokens {
+                            println!("{}", token);
                         }
                         let old: bool = match cmd_tokens[2] {
                             "0" => false,
                             "1" => true,
                             _ => return Err(String::from("Invalid arguments for SMCommand 'registry add'"))
                         };
+                        let manual_override: bool = match cmd_tokens[4] {
+                            "0" => false,
+                            "1" => true,
+                            _ => return Err(String::from("Invalid arguments for SMCommand 'registry add'"))
+                        };
+                        let args: Vec<String> = validate_args(cmd_tokens[6]).unwrap();
+                        let depends: Vec<String> = validate_args(cmd_tokens[7]).unwrap();
+
                         return Ok(SMCommand::Registry {
                             subcommand: RegistryCommand::Add {
                                 old,
-                                service_name: String::from(cmd_tokens[3])
+                                service_name: String::from(cmd_tokens[3]),
+                                args: Some(args),
+                                manual_override,
+                                depends: Some(depends),
+                                scheme_path: String::from(cmd_tokens[5]),
                             }
                         });
                     }

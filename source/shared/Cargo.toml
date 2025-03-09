@@ -2,8 +2,11 @@
 name = "shared"
 description = "A crate containing various structs, functions, and enums shared between the services and service-monitor crates"
 version = "0.1.0"
-authors = ["Charlie Phillips <Donald Nelson <s.donald.nelson@gmail.com>", ]
+authors = ["Charlie Phillips <Donald Nelson <s.donald.nelson@gmail.com> Devan Gandhi", ]
 edition = "2024"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0.218", features = ["derive"] }
+toml = "0.8.20"
+regex = "1.5.4"
