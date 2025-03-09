@@ -185,7 +185,7 @@ impl SMCommand {
         };
         //print!("{:?}", cmd_string);
         let cmd_tokens: Vec<&str> = cmd_string.split(" ").collect();
-        //let mut remaining = None;
+        // let mut remaining = None;
         // if cmd_tokens.len() > 5{
         //     remaining = Some(cmd_tokens[5..].join(" ")); //this makes no sense to me, but it only works if I declare this here instead of the if block for add.
         // }
@@ -243,7 +243,7 @@ impl SMCommand {
                 }
                 match cmd_tokens[1] {
                     "add" => {
-                        // if cmd_tokens.len() != 4 {
+                        // if cmd_tokens.len() != 8 {
                         //     return Err(String::from("Invalid arguments for SMCommand 'registry add'"));
                         // }
                         for token in &cmd_tokens {
