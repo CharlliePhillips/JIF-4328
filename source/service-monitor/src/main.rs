@@ -296,7 +296,13 @@ fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
                 //service.pid = child.id().try_into().unwrap();
                 //service.pid += 2;
                 service.time_started = Local::now().timestamp_millis(); // where should this go for the start command?
-                child.wait();
+                match child.wait() {
+                    Ok(_ext) => {}
+                    Err(_) => {
+                        error!("{} failed to start!", service.name);
+                        return;
+                    }
+                }
                 let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
                     .expect("couldn't open child scheme");
                 let pid_req = b"pid";
