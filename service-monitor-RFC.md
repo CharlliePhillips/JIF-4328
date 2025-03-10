@@ -15,16 +15,16 @@ It is critical that a way to monitor and recover services and other daemons be i
 ## User stories 
 
 -  System Start (assume all devices and daemons are known) 
-    - When the Services Manager is started at the end of the boot process it will open the `registry.toml` and read the list of services and their dependent daemons to build a dependency tree. It will then start them in parallel starting at the root(s) (or as each service’s dependencies become available). Any arguments to those programs that would normally be passed to the command line will be specified in an arguments array for each service in the registry. The specified Type of the service can tell the Services Manager how it will treat the service. For example, some services (old style daemons) may be started by the Service Manager but otherwise will not interact with it.  
+    - When the Services Manager is started at the end of the boot process it will open the `registry.toml` and read the list of services and their dependent daemons to build a dependency tree. It will then start them in parallel starting at the root(s) (or as each service’s dependencies become available). Any arguments to those programs that would normally be passed through the command line will be specified in an arguments array for each service in the registry. The specified Type of the service can tell the Services Manager how it will treat the service. For example, some services (old style daemons) may be started by the Service Manager but otherwise will not interact with it.  
 
 - Device Discovery (previously unknown device added to registry) 
     - Long term the Redox team would like to add a “device discovery” daemon that would look for devices attached to the computer and determine their dependencies. This discovery daemon would then request any services needed for a device be started. These requests will be received by the service monitor which will start that service as specified in the registry.toml. While that start thread is running the registry file will be checked for the service and the parameters will be updated if they are different and the manual parameter flag is not set (see more questions). The device discovery daemon is a future project and may need other functionality like stopping, registering, or de-registering services. There should be an API for these kinds of requests as well to make room for future development. 
 
 - Timer-based Status Check 
-    - After a certain time interval, the SM will run a thread to check each managed daemon, read the active bit, message, and calculate the uptime, this data will be sent to the log daemon for recording. 
+    - After a certain time interval, the SM will run a thread to check each managed daemon to ead the recorded operations, errors, message, and calculate the uptime, this data will be stored for each managed service that was read from the registry. 
 
 - Timer-based Failure Detection and Restart 
-    - The timer-based status check can detect a failing daemon if the managed service’s active bit is 0, or it fails to respond with valid data on the regular interval, then the service should be stopped and restarted. Some services will have information in the kernel that is required to properly restart them. What syscall(s) this will be? 
+    - The timer-based status check can detect a failing daemon if it fails to respond with valid data on the regular interval, then the service should be stopped and restarted. If the service monitor attempts to restart a service within 5(?) seconds of starting that service, it will be stopped and not restarted. Some services will have information in the kernel that is required to properly restart them.
 
 ### User Commands: 
 A separate program with the name “services” will parse the arguments passed and call the Service Monitor API accordingly to provide a user interface to the daemon. The services CLI application will open the service monitor scheme and reference it with a file descriptor. The Service Monitor API will use the getattr & setattr syscalls with to send and recieve information from the CLI application. While the getattr & setattr calls are still in development the read/write syscalls will be used. A GUI alternative should also be relatively easy to build with the same Service Monitor API and libcosmic.  
@@ -148,42 +148,48 @@ A separate program with the name “services” will parse the arguments passed 
         depends = []
         scheme_path = "/scheme/<service>"
         ```
-        - this only includes the info specified in `registry.toml`, not the short-term info that is included in `services info <daemon_name>`
-- `services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>`: Adds an entry for a daemon into the list of managed services, it will be started by the SM with the command line args specified in the array.
-    - `--old` | optional flag to indicate an old-style service. If set, the `r#type` will be set to "unmanaged". Otherwise, `r#type` is set to "daemon". An unmanaged service will be started by the service-monitor, but then released (and not managed).
-    - `--override` | optional flag to for the `manual_override` component in smregistry.toml. If set, `manual_override` is set to true. Otherwise, `manual_override` is set to false.
-    - If there are no args and/or dependencies for the service being passed, "[]" should be specified for part of the command.
-- `services registry remove <daemon_name>`: removes the `registry.toml` entry for the specified service if it exists. If it does not exist, this command will not remove anything. This will not affect the instance of the service that is currently running, only the entry in `registry.toml`
-- `services registry edit <daemon_name> -o edit_args=[] scheme_path="/scheme/<daemon_name>" dependencies=["other_daemon"]`: Takes tag -o (type = old daemon) and the variable arguments edit_args, scheme_path, and dependencies after `<daemon_name>` to update the registry entry for a service.
-    - For arguments `remove` and `edit`: If that service is running when we attempt to edit/remove it, the changes will be reflected once the service has been stopped (and restarted for edit).
 
-7. **services** / **services --help**
-    - Displays a help page detailing the available commands
-
-
+    - this only includes the info specified in `registry.toml`, not the short-term info that is included in `services info <daemon_name>`
+7. **services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>**
+- `--old` | optional flag to indicate an old-style service. If set, the `r#type` will be set to "unmanaged". Otherwise, `r#type` is set to "daemon". An unmanaged service will be started by the service-monitor, but then released (and not managed).
+- `--override` | optional flag to for the `manual_override` component in smregistry.toml. If set, `manual_override` is set to true. Otherwise, `manual_override` is set to false.
+- If there are no args and/or dependencies for the service being passed, "[]" should be specified for part of the command.
+8. **services registry remove <daemon_name>**
+   - removes the `registry.toml` entry for the specified service if it exists. If it does not exist, this command will not remove anything. This will not affect the instance of the service that is currently running, only the entry in `registry.toml`
+9. **services** / **services --help**
+    - Displays a help page detailing the available commands 
 
 ## APIs and Message Flows 
 #### Managed Service API (new-style daemons)
-- Each managed service will have it's main/primary scheme attached to a `BaseScheme` containing several sub-schemes that hold managment data. The BaseScheme will present the main/primary scheme the same way it would be accesed if it was not managed. Data from these managment schemes can be accessed by calling `dup` on the service's scheme and then `read` or `write` on the resulting file descriptor.
+- Each managed service will have it's main/primary scheme attached to a `BaseScheme` containing several sub-schemes that hold management data. The BaseScheme will present the main/primary scheme the same way it would be accesed if it was not managed. Data from these management schemes can be accessed by calling `dup(...)` on the service's scheme with the management scheme named, and then `read(...)` or `write(..)` on the resulting file descriptor.
 
 - The sub-schemes of BaseScheme are:
     - `main_scheme` - The primary scheme for the service, or the one that is pre-existing for an old-style daemon being converted to a managed one.
+        - The `Scheme` trait methods for the main scheme are transparent to the main scheme's implementations. 
     - `pid_scheme` - Contains a u64 proccess id obtained from std::process
-    - `requests_scheme` - Holds five integers counting requests to the main scheme for read, write, open, close, and dup
+        - **Read:** Fills the passed buffer with 8 native endian bytes to be converted to a u64. 
+        - **Write:** Default implementation returning EBADF. The pid of a service should stay the same as long as it's running.
+    - `requests_scheme` - Holds six u64 values counting requests to the main scheme for read, write, open, close, dup, and any errors.
+        - **Read:** Fills the passed buffer with 48 bytes with each 8 bytes cooresponding to a u64 in the order above.
+        - **Write:** Used by the BaseScheme to update the service's stored stats. If `"clear"` is passed on the buffer then the stored values are set to zero, otherwise 48 bytes will be read from the buffer and copied to the same u64 values above.
     - `time_stamp_scheme` - Holds a 64 bit timestamp of when the service was started. Recorded in seconds since Unix epoch (1/1/1970).
-    - `message_scheme` - Holds a 32 byte array of charachters for a human readable status message.
+        - **Read:** Fills the passed buffer with 8 bytes representing seconds (or millis?) as a u64.
+        - **Write:** Default implementation returning EBADF. The time a service started will be the same as long as it's running.
+    - `message_scheme` - Holds a 32? byte array of charachters for a human readable status message.
+
+        - **Write:** Overwrites the Service's current message with the passed buffer.
     - `control_scheme` - Holds a bool to indicate if a clear has been requested by the service monitor and another to indicate a graceful shutdown has been requested.
+        - **Read:** Fills the buffer with 2 bytes, the first being the value of `bool stop` (0 for false 1 for true) indicating that a service has had a graceful `shutdown()` requested. The second byte is `bool clear` indicating that the service-monitor requested for the stats given by request scheme to be reset.
+        - **Write:** Reads the passed buffer for an ASCII byte string. If the buffer is `"clear"` then `bool clear` is set to true, and if the buffer is `"cleared"` then it set to false. These are used by the service-monitor to clear the statistics, and BaseScheme to indicate that the clearing code is finished respectively. If the buffer is `"stop"` then `bool stop` is set to false.
 
-- The each of the BaseScheme sub-schemes wrapped in the type `ManagmentSubScheme`. This type is an alias for `Arc<Mutex<Box<dyn Scheme>>>` which allows different sized structs implementing Scheme to be accessed in a threadsafe way as the same type.
-
-- BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `ManagmentSubScheme` as it's value. When trying to access a scheme through the BaseScheme a function `handler(id: usize)` is called to get a thread lock on that reference. The scheme's methods can then be called on this mutex guard thanks to Rust's deref trait.
+- The each of the BaseScheme sub-schemes wrapped in the type `ManagementSubScheme`. This type is an alias for `Arc<Mutex<Box<dyn ManagedScheme>>>` which allows different sized structs implementing Scheme to be accessed in a threadsafe way as the same type.
 
 - The BaseScheme implements the following methods from Scheme:
     - `xopen` - Opens the main scheme and adds the new fd and a clone of the arc-mutex containing the scheme to the hash-map of handlers.
     - `dup` - 
         1. If the hash-map does contain the id passed as key then return `EBADF`.
         2. If the map does contain the key and nothing is passed on the buffer then the dup call is forwarded to the main scheme to get a new id to be added to the hashmap. 
-        3. If the buffer contains the name of a managment scheme then a new id is assigned for that scheme and added to the hash-map. 
+        3. If the buffer contains the name of a management scheme then a new id is assigned for that scheme and added to the hash-map. 
         4. If the id passed is recognized but the information on the buffer is not then the scheme associated with that id is forwarded the dup call and the new id from that is added to the map.
         5. The new id is wrapped in Result and returned
     - `read` - Gets the handler associated with the passed id using `handle()` and passes the read call to that scheme. If the handler belongs to the main scheme then this acess will be counted.
@@ -191,28 +197,39 @@ A separate program with the name “services” will parse the arguments passed 
     - `close` - Checks if the passed id is in the hashmap, if it is then pass the close call to the subscheme. The hashmap entry is removed regardless of if calling close on the subscheme was successful.
     - The other methods in the Scheme trait implementation for BaseScheme (fcntl, fsync, etc.) will forward to calling on the main scheme.
 
-- The main scheme for each service will implement the ManagedScheme trait. This trait will contain a collection of methods used by the BaseScheme trait to track the main scheme's statistics. Each of the managment sub-schemes will also implement ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme.
-    - `count_ops() -> bool`: returns true if file operations (read, write, open, close, & dup) on this scheme should be counted in the BaseScheme statistics
-    - `message -> Option<[&u8; 32]>` - Returns an Option containing a new 32 btye status message or None if a new message is not available.
-    - `shutdown()` - gracefully stops service, closing open fds, clean up, etc. This is called at an appropriate time in the BaseScheme when ControlScheme.stop is true.
+- Each of the sub-schemes will implement the `ManagedScheme` trait. This trait will contain a collection of methods used by the BaseScheme's methods to track the main scheme's statistics. 
+    - The main scheme of `BaseScheme` is intended to define it's own implementation of `ManagedScheme` too accomodate any service specific behavior.
+    - Each of the management sub-schemes will use the default implementation of ManagedScheme so that it's methods may be called on any scheme handlers in the BaseScheme.
+    - The `ManagedScheme` trait is a subtrait of Scheme so anything that implements it must also implement the `Scheme` trait. This allows the `BaseScheme` to call methods from both traits on it's subschemes.
+    - The methods on a `ManagedScheme` are:
+        - `count_ops() -> bool`: Returns true if file operations (read, write, open, close, & dup) on this scheme should be counted in the BaseScheme statistics. **Default:** return false.
 
-- The BaseScheme also contains a managment structure wrapped in an arc mutex. This managment structure contains the recorded statistics for a particular service
+        - `shutdown() -> bool` - Gracefully stops service, closing open fds, clean up, etc. This is called at an appropriate time in the BaseScheme when ControlScheme.stop is true. Returns true if successful. **Default:** return false.
+
+- BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `ManagementSubScheme` as it's value. When trying to access a scheme through the BaseScheme the method `handler(id: usize)` is called to get a thread lock on that reference.
+
+- The BaseScheme also contains a management structure wrapped in an arc mutex. This management structure contains the recorded statistics for a particular service
 ```rust
+
 pub struct Managment {
-    pid: usize,
-    time_stamp: i64,
-    message: [u8; 32],
     read_count: u64,
     write_count: u64,
     open_count: u64,
     close_count: u64,
     dup_count: u64,
+    error_count: u64,
 }
 ```
-- **Note:** for main schemes implementing the SchemeBlock trait a different BaseScheme and Managment struct will be neccecary for tracking things such as delay time. SchemeBlock allows IO calls to take their time to complete for handling things like drive access. This kind of flow would appear to be an error for the standard BaseScheme.
+
+- The `BaseScheme` implements these methods:
+    - `new(main_scheme: impl Scheme + 'static + ManagedScheme)` Takes the main scheme as an argument. Anything implementing Scheme and Managed scheme can be passed to this method and it will live for as long as the `BaseScheme` object.
+    - `handler(&self, id: usize) -> Result<SubSchemeGuard>` Takes a usize id which cooresponds to a key in the handlers hash-map and returns a mutex guard for the sub-scheme with that id. The scheme's methods can then be called in a thread safe way on this mutex guard thanks to Rust's deref trait.
+    - `update(&self) -> Result<usize>` This is called each time `handler()` is to make sure that each time a sub-scheme is accessed, it has the most up-to-date data from the management struct. This includes the file op statistics, message, and resetting the control struct after the statistics have been cleared.
+    - `message(&self, message: String)` This is called within a daemon implementing `ManagedScheme` to update the message contained in the `message_scheme`. The `String` message is truncated to 32 bytes to fit inside of the scheme.
+- **Note:** for main schemes implementing the SchemeBlock trait a different BaseScheme and management struct will be neccecary for tracking things such as delay time. SchemeBlock allows IO calls to take their time to complete for handling things like drive access. This kind of flow would appear to be an error for the standard BaseScheme.
 
 ### Service Status, Failure Detection & Recovery
-- Each service/daemon in redox has a scheme associated with it where data is stored. This scheme can be accessed as a file with the `open` syscall when passed the correct path. The file descriptor from a fully managed service can be passed to the `dup` syscall along with a byte array containing the name of the desired managment data in order to get a file descriptor pointing to that data. 
+- Each service/daemon in redox has a scheme associated with it where data is stored. This scheme can be accessed as a file with the `open` syscall when passed the correct path. The file descriptor from a fully managed service can be passed to the `dup` syscall along with a byte array containing the name of the desired management data in order to get a file descriptor pointing to that data. 
 ex:
 ```rust
 let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open chld scheme");
@@ -226,7 +243,7 @@ if let Ok(pid_scheme) = libredox::call::dup(child_scheme, b"pid") {
 
 - While getattr and setattr are still in development the service monitor will use the `read` syscall on a file descriptor pointing to a scheme containing the desired data. When the service recieves this request it finds the scheme associated with that fd and transparently calls read on that particular scheme. The requested data is written to the buffer passed to read for processing. 
 
-- The `write` syscall can be used to modify particular managment sub-schemes.
+- The `write` syscall can be used to modify particular management sub-schemes.
 ex:
 ```rust
 let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 0).expect("failed to open chld scheme");
@@ -236,22 +253,21 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 
 - The file descriptor(s) and registry.toml info for each monitored service is used with the protocols below to collect data on each service. This will then be used to restart or restore processes when they are not working correctly.
 
-- Protocalls here are a 32-byte string passed to getattr()/setattr() with a file descriptor of the service to request statistics from. The file descriptor is obtained by opening the service’s scheme path as a file. A managed service’s scheme will get one of these strings in it’s get/setattr and match it to a function that is part of the managed scheme trait to read and/or write the relevant data to/from the scheme. While getattr and setattr are being implemented read and write will be used instead. 
-    - `active` Boolean indicates if a service is running, it is set to false when read, and set back to true by the service if it is still running. 
-    - `time_stamp` Unix timestamp of when service started. 
-    - `message` An X byte limit string with a human readable message indicating the state of the service. Errors are logged to ‘error_list’ 
-    - `stop` When called the daemon will attempt to shut down gracefully potentially preserving state for restarting. 
-    - `request_count` How many requests received in a tuple of ints (read, write, open, close, dup) 
-    - `error_count` size of error_list. 
-    - `error_list` list of recorded error messages. 
+- Passing the following strings to dup 
+    - `"active"` Boolean indicates if a service is running, it is set to false when read, and set back to true by the service if it is still running. 
+    - `"time_stamp"` Unix timestamp of when service started. 
+    - `"message"` An X byte limit string with a human readable message indicating the state of the service. Errors are logged to ‘error_list’ 
+    - `"stop"` When called the daemon will attempt to shut down gracefully potentially preserving state for restarting. 
+    - `"request_count"` How many requests received in a tuple of ints (read, write, open, close, dup) 
+    - `"error_count"` size of error_list. 
     - `clear` set to 1 to clear the short-term statistics
 
-- There are additional protocalls for services using SchemeBlock
-    - `average_delay`
-    - `last_delay`
+- There are additional strings to request data for services implementing SchemeBlock to SchemeBlock
+    - `"average_delay"`
+    - `"last_delay"`
     - WIP
 
-- Threaded wrappers for get/setattr() will also be needed in the case that a thread executing either syscall is hung on that command. These are interruptible and will return EINTR when their running thread is signaled with SIGALRM. Another thread will monitor the wrapper(s) for response times that are too long and signal them with SIGALRM (using pthread_kill) if they exceed some timeout period. 
+- Threaded wrappers for read/write/get/setattr() will also be needed in the case that a thread executing either syscall is hung on that command. These are interruptible and will return EINTR when their running thread is signaled with SIGALRM. Another thread will monitor the wrapper(s) for response times that are too long and signal them with SIGALRM (using pthread_kill) if they exceed some timeout period. 
 
 - There is some data that will be stored in the Service Monitor for each service running: 
     - Total number of requests (this ignores clearing) 
@@ -274,13 +290,13 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 - Uses and Flows 
     - The Services Manager’s `registry.toml` is updated by Service Discovery through the service manager’s API.  This will run at boot before the rest of the Service Manager is started. For development it should also be possible to enter information into `registry.toml` manually. The`registry.toml` will contain information on how to start a service and what the Service Manger’s behavior will be while managing it. 
         - There will be at least one driver (ACPI-AML) that can only run once during startup and cannot safely be restarted. It will need to be monitored to see if it fails, but the registry will need to include something like, "monitor but don't restart". 
-    - While the Services Manager is running a user can manually add a service by entering the `services register` command. 
+    - While the Services Manager is running a user can manually add, remove or edit a service by using the `services register` command described above in the user commands section. 
 
 - Format 
     - The `registry.toml` stores the commands and arguments to start a service in a .toml file. Each service should have:  
       - A service heading 
       - Name 
-      - Type - You could specify for a service to be ignored by the SM (i.e. using SM as init) by setting the Type to "unmanaged". 
+      - Type - You could specify for a service to be ignored by the SM (i.e. using SM as old-style init) by setting the Type to “unmanaged”. 
       - Starting Arguments 
       - Manual Override – If you enter custom data into the registry.toml and do not want the Service Monitor to potentially override it then this should be set to true. Otherwise risk this information being “corrected” 
       - Depends – A list of named dependencies, this list is used to build dependency tree(s)
@@ -308,7 +324,7 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 
 3. **API**
     - An API will be provided to the Service Monitor via `read` and `write` on it’s scheme (until get and setattr are ready). Calls when implemented will retrieve information recorded in the Running loop for whatever is program is calling them, or trigger the Service Monitor to start/kill a service. This API will allow code to be triggered by the getattr/setattr syscalls from other applications.
-    - A managment API will be provided for each managed scheme through a `BaseScheme`. This struct holds the primary scheme for the service as well as several others containg the data needed for the service monitor. The `read` and `write` syscalls will be used to access these sub-schemes until `getattr` and `setattr` are ready. The primary scheme will be accessable through the BaseScheme using the same convention as before to ensure compatibility with existing code.
+    - A management API will be provided for each managed scheme through a `BaseScheme`. This struct holds the primary scheme for the service as well as several others containg the data needed for the service monitor. The `read` and `write` syscalls will be used to access these sub-schemes until `getattr` and `setattr` are ready. The primary scheme will be accessable through the BaseScheme using the same convention as a non-managee scheme to ensure compatibility with existing code.
 
 4. **CLI**
     - A relatively simple program to serve as the user interface that parses command line arguments and makes the corresponding getattr/setattr calls to the Service Monitor API. It then will take any information from the Service Monitor and format it to be printed for the user. 
@@ -327,13 +343,10 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 - Making the registry split up among multiple files, maybe one per service 
 
 # Unresolved questions
-- With the current implementation if the service monitor writes a request and to a service and then another program attempts to read from that service then it will recieve the response intended for the service manager. How can we tell from inside the `read` function what process called it? Will we have to store something in the `Managment` struct to help identify the service_monitor process?
 - Any remaining common protocols and device specific protocols 
-- Should the timestamp use seconds milliseconds?
 - Should the Device Discovery remove formerly discovered services or manually added services that aren’t found for stability? 
-- Daemon dependencies will come from `Cargo.toml/.lock`? `Registry.toml`? 
 - What happens when a discovered service exists in the registry but the parameters discovered are different then those in the registry, update? Will we need an additional flag in the registry for manual override of this update? 
-- Should a file descriptor for the child's BaseScheme be recorded, the base scheme and managment descriptors? Or should the service monitor open and close file descriptors as it runs.
+- Should a file descriptor for the child's BaseScheme be recorded, the base scheme and management descriptors? Or should the service monitor open and close file descriptors as it runs.
 - Thread safe function wrappers for getattr/setattr. One thread monitoring all wrappers or a monitor thread for each wrapper? How long, how would a user configure timeout time, should they? 
 - Automatic restart – triggered on faulting daemon. Need to consider how to detect service “bootloop” to prevent dead service hogging resources. 
 - For ‘not responding’  how many times and how short of a time period? Is this something determined by daemon, historic data, arbitrary numbers to be manually tuned for now? 
@@ -343,3 +356,7 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 - What happens when a service is not responding that has dependent services still running? 
 - How do permissions/security on the API work? 
 - if we are unable to open and read the pid from a service we just started then should we assume it failed to start?
+
+- what all needs to happen for a graceful shutdown in a service? This could vary service to service but is there anything that is common for all?
+- can we garuantee that once `shutdown()` is complete that the service is actually cleaned up? (how can the return from `shutdown()` if the service running it has stopped?)
+- Service should decide what message to send to the service monitor, to prevent having to have the Service store it's own copy of the message is it reasonable to have it write to it's BaseScheme? How about another process entirely trying to modify the message? Bigger discussion about permisions?

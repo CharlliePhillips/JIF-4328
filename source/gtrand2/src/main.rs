@@ -20,6 +20,7 @@ use syscall::{
     Error, Result, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC, O_CREAT,
     O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY, SchemeMut
 };
+use libredox::{call::{open, read, write}, flag::*, error::*, errno::*};
 // Create an RNG Seed to create initial seed from the rdrand intel instruction
 use rand_core::SeedableRng;
 use sha2::{Digest, Sha256};
@@ -28,11 +29,12 @@ use std::collections::BTreeMap;
 use std::num::Wrapping;
 // new lib service_base
 use service_base::BaseScheme;
+use service_base::ManagedScheme;        
 use std::sync::*;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use chrono::Local;
-use std::ops::Deref;        
+use std::ops::Deref;
 
 // This Daemon implements a Cryptographically Secure Random Number Generator
 // that does not block on read - i.e. it is equivalent to linux /dev/urandom
@@ -118,6 +120,7 @@ struct RandScheme {
     // <file number, information about the open file>
     next_fd: Wrapping<usize>,
     timeout: bool,
+    error: bool,
 }
 
 impl RandScheme {
@@ -134,6 +137,7 @@ impl RandScheme {
             open_descriptors: BTreeMap::new(),
             next_fd: Wrapping(0),
             timeout: false,
+            error: false,
         }
     }
 
@@ -284,8 +288,12 @@ impl Scheme for RandScheme {
                                            // not doing so won't make the output any less 'random'
         self.prng.fill_bytes(buf);
 
-        while (self.timeout) {
+        while self.timeout {
             // infanite loop to test timeout.
+        }
+
+        if (self.error) {
+            return Err(Error::new(EBADF));
         }
 
         Ok(buf.len())
@@ -293,8 +301,15 @@ impl Scheme for RandScheme {
 
     fn write(&mut self, file: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         // for service monitor timeout testing, if we write "timeout" to gtrand2 then read should also trigger an infinate loop:
+        while self.timeout {
+            // infanite loop to test timeout.
+        }
         if buf == b"timeout" {
             self.timeout = true;
+        }
+
+        if buf == b"error" {
+            self.error = true;
         }
 
         // Check fd and permissions
@@ -378,6 +393,16 @@ impl Scheme for RandScheme {
     }
 }
 
+impl ManagedScheme for RandScheme {
+    fn count_ops(&self) -> bool {
+        return true;
+    }
+
+    fn shutdown(&mut self) -> bool {
+        return false;
+    }
+}
+
 fn daemon(daemon: redox_daemon::Daemon) -> ! {
     let socket = Socket::create("gtrand2").expect("randd: failed to create rand scheme");
 
@@ -388,7 +413,8 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
         .expect("randd: failed to mark daemon as ready");
 
     libredox::call::setrens(0, 0).expect("randd: failed to enter null namespace");
-    //scheme.managment.start_managment("started gtrand!");
+
+     let _ = scheme.message("starting!");
 
     while let Some(request) = socket
         .next_request(SignalBehavior::Restart)
