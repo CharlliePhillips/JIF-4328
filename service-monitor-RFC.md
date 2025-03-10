@@ -176,13 +176,13 @@ A separate program with the name “services” will parse the arguments passed 
         - **Read:** Fills the passed buffer with 8 bytes representing seconds (or millis?) as a u64.
         - **Write:** Default implementation returning EBADF. The time a service started will be the same as long as it's running.
     - `message_scheme` - Holds a 32? byte array of charachters for a human readable status message.
-        - **Read:** Fills the passed buffer with 32? bytes to be read as an ASCII string.
+
         - **Write:** Overwrites the Service's current message with the passed buffer.
     - `control_scheme` - Holds a bool to indicate if a clear has been requested by the service monitor and another to indicate a graceful shutdown has been requested.
         - **Read:** Fills the buffer with 2 bytes, the first being the value of `bool stop` (0 for false 1 for true) indicating that a service has had a graceful `shutdown()` requested. The second byte is `bool clear` indicating that the service-monitor requested for the stats given by request scheme to be reset.
         - **Write:** Reads the passed buffer for an ASCII byte string. If the buffer is `"clear"` then `bool clear` is set to true, and if the buffer is `"cleared"` then it set to false. These are used by the service-monitor to clear the statistics, and BaseScheme to indicate that the clearing code is finished respectively. If the buffer is `"stop"` then `bool stop` is set to false.
 
-- The each of the BaseScheme sub-schemes wrapped in the type `managementSubScheme`. This type is an alias for `Arc<Mutex<Box<dyn ManagedScheme>>>` which allows different sized structs implementing Scheme to be accessed in a threadsafe way as the same type.
+- The each of the BaseScheme sub-schemes wrapped in the type `ManagementSubScheme`. This type is an alias for `Arc<Mutex<Box<dyn ManagedScheme>>>` which allows different sized structs implementing Scheme to be accessed in a threadsafe way as the same type.
 
 - The BaseScheme implements the following methods from Scheme:
     - `xopen` - Opens the main scheme and adds the new fd and a clone of the arc-mutex containing the scheme to the hash-map of handlers.
@@ -206,7 +206,7 @@ A separate program with the name “services” will parse the arguments passed 
 
         - `shutdown() -> bool` - Gracefully stops service, closing open fds, clean up, etc. This is called at an appropriate time in the BaseScheme when ControlScheme.stop is true. Returns true if successful. **Default:** return false.
 
-- BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `managementSubScheme` as it's value. When trying to access a scheme through the BaseScheme the method `handler(id: usize)` is called to get a thread lock on that reference.
+- BaseScheme handles access to it's subschemes via a hash-map with open ids as the key and an `ManagementSubScheme` as it's value. When trying to access a scheme through the BaseScheme the method `handler(id: usize)` is called to get a thread lock on that reference.
 
 - The BaseScheme also contains a management structure wrapped in an arc mutex. This management structure contains the recorded statistics for a particular service
 ```rust

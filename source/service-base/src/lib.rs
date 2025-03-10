@@ -17,7 +17,7 @@ use chrono::Local;
 use std::ops::Deref;
 
 
-type managementSubScheme = Arc<Mutex<Box<dyn ManagedScheme>>>;
+type ManagementSubScheme = Arc<Mutex<Box<dyn ManagedScheme>>>;
 type SubSchemeGuard<'a> = MutexGuard<'a, Box<dyn ManagedScheme>>;
 
 struct PidScheme(u64);
@@ -38,15 +38,15 @@ struct ControlScheme{
 }
 
 pub struct BaseScheme {
-    main_scheme: managementSubScheme,
-    pid_scheme: managementSubScheme,
-    requests_scheme: managementSubScheme,
-    time_stamp_scheme: managementSubScheme,
-    message_scheme: managementSubScheme,
-    control_scheme: managementSubScheme,
+    main_scheme: ManagementSubScheme,
+    pid_scheme: ManagementSubScheme,
+    requests_scheme: ManagementSubScheme,
+    time_stamp_scheme: ManagementSubScheme,
+    message_scheme: ManagementSubScheme,
+    control_scheme: ManagementSubScheme,
     // handlers holds a map of the file descriptors/id to
     // the actual scheme object
-    handlers: HashMap<usize, managementSubScheme>,
+    handlers: HashMap<usize, ManagementSubScheme>,
     next_mgmt_id: AtomicUsize,
     management: Arc<Mutex<management>>,
 }
@@ -161,7 +161,7 @@ impl Scheme for BaseScheme {
         let mut main_lock = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
         let open_res = main_lock.xopen(path, flags, caller); 
         // if we successfully open the main scheme and get ThisScheme{id,flags} then add a
-        // new managementSubScheme to the list of handlers with that id.
+        // new ManagementSubScheme to the list of handlers with that id.
         let mut management = self.management.lock().map_err(|err| Error::new(EBADF))?;
         if let Ok(OpenResult::ThisScheme{number, flags}) = open_res {
             self.handlers.insert(number, self.main_scheme.clone());
@@ -181,7 +181,7 @@ impl Scheme for BaseScheme {
         // check if we have an existing handler for this id
         if self.handlers.contains_key(&old_id) {
             let mut result = match buf {
-                // if there is a matching managementSubScheme name make a new id/handler for it
+                // if there is a matching ManagementSubScheme name make a new id/handler for it
                 b"pid" => {
                     let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.pid_scheme.clone());
