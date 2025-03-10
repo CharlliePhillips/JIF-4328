@@ -11,7 +11,7 @@ use chrono::prelude::*;
 use std::sync::mpsc::channel;
 mod scheme;
 mod registry;
-use registry::{read_registry, view_entry, add_entry, rm_entry, rm_hash_entry, add_hash_entry, ServiceEntry};
+use registry::{read_registry, view_entry, add_entry, add_hash_entry, rm_entry, rm_hash_entry, edit_entry, edit_hash_entry, ServiceEntry};
 
 
 enum GenericData {
@@ -202,12 +202,12 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     rm_hash_entry(services, service_name);
                     sm_scheme.cmd = None;
                 },
-                RegistryCommand::Edit { service_name } => {
+                RegistryCommand::Edit { service_name, o, edit_args, scheme_path, dependencies } => {
+                    edit_entry(service_name, *o, edit_args.as_ref().unwrap(), scheme_path, dependencies.as_ref().unwrap());
+                    edit_hash_entry(services,service_name, *o, edit_args.as_ref().unwrap(), scheme_path, dependencies.as_ref().unwrap());
                     sm_scheme.cmd = None;
-                },
-                //TODO: Add Edit
+                }
             }
-            
             
         },
         None => {},
@@ -461,7 +461,7 @@ fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) {
         libredox::call::read(data_scheme, read_buf).expect("could not read data scheme");
         libredox::call::close(data_scheme);
     } else {
-        libredox::call::read(child_scheme, read_buf).expect("could not read data scheme");
+        libredox::call::read(child_scheme, read_buf).expect("could not read child scheme");
     }
 }
 

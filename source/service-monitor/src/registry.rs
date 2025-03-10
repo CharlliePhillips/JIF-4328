@@ -187,6 +187,96 @@ pub fn rm_entry(name: &str) {
     }
 }
 
+pub fn edit_entry(name: &str, o: bool, edit_args: &Vec<String>, scheme_path: &str, dependencies: &Vec<String>) {
+    let mut services = read_registry();
+    if let Some(entry) = services.get_mut(name) {
+        if entry.running {
+            warn!("Service is currently running");
+        }
+        
+        if o {
+            entry.r#type = "unmanaged".to_string();
+        }
+            
+        if !edit_args.is_empty() {
+            entry.args = edit_args.clone();
+        }
+        
+        if !scheme_path.is_empty() {
+            entry.scheme_path = scheme_path.to_string();
+        } else if entry.scheme_path.is_empty() {
+            entry.scheme_path = format!("/scheme/{}", name);
+        }
+        
+        for dep in dependencies {
+            if !entry.depends.contains(dep) {
+                entry.depends.push(dep.clone());
+            }
+        }
+            
+        write_registry(services);
+    } else {
+        println!("Service not found in registry\nRegistry edit failed");
+    }
+}
+
+pub fn edit_hash_entry(
+    services: &mut HashMap<String, ServiceEntry>, 
+    name: & str,
+    o: bool, 
+    edit_args: &Vec<String>,
+    scheme_path: &str,
+    depends: &Vec<String>)
+{
+    if services.contains_key(name) {
+        let mut entry = services.get_mut(name).unwrap();
+        if o {
+            entry.r#type = "unmanaged".to_string();
+        }
+        if !edit_args.is_empty() {
+            entry.args = edit_args.to_vec();
+        }
+        
+        if !scheme_path.is_empty() {
+            entry.scheme_path = scheme_path.to_string();
+        } else if entry.scheme_path.is_empty() {
+            entry.scheme_path = format!("/scheme/{}", name);
+        }
+        for dep in depends {
+            if !entry.depends.contains(dep) {
+                entry.depends.push(dep.clone());
+            }
+        }
+        
+        let new_entry = ServiceEntry {
+            name: entry.name.to_string(),
+            r#type: entry.r#type.clone(),
+            args: entry.args.clone(),
+            manual_override: entry.manual_override,
+            depends: entry.depends.clone(),
+            scheme_path: entry.scheme_path.clone(),
+            running: entry.running,
+            pid: entry.pid,
+            time_started: entry.time_started,
+            time_init: entry.time_init,
+            read_count: entry.read_count,
+            write_count: entry.write_count,
+            error_count: entry.error_count,
+            last_response_time: entry.last_response_time,
+            message: entry.message.clone(),
+            total_reads: entry.total_reads, 
+            total_writes: entry.total_writes,
+            total_opens: entry.total_opens,
+            total_closes: entry.total_closes,
+            total_dups: entry.total_dups,
+        };
+        
+        services.insert(name.to_string(), new_entry);
+    } else {
+        println!("Unable to edit Service Entry that is not present in internal list");
+    }
+}
+
 pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: & str) {
     let mut services_toml = read_registry();
     if let Some(entry) = services_toml.get(name) {
