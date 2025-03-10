@@ -306,6 +306,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     let r#type = if *old { "unmanaged" } else { "daemon" };
                     add_entry(service_name, r#type, args.as_ref().unwrap(), *manual_override, scheme_path, depends.as_ref().unwrap());
                     add_hash_entry(service_name, r#type, args.as_ref().unwrap(), *manual_override, scheme_path, depends.as_ref().unwrap(), services);
+                    if services.contains_key(service_name) {
+                        println!("key found!");
+                        let mut entry = services.get(service_name).unwrap();
+                        println!("{}", entry.scheme_path);
+                    } else {
+                        println!("key not found!");
+                    }
                     sm_scheme.cmd = None;
                 },
                 RegistryCommand::Remove { service_name } => {
