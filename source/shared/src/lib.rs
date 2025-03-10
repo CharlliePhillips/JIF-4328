@@ -60,8 +60,7 @@ pub enum RegistryCommand {
         #[arg(value_name = "edit_args", help = "Arguments for the daemon", value_parser = validate_args)]
         edit_args: Option<::std::vec::Vec<String>>,
         
-        #[arg(value_name = "scheme_path", help = "Scheme path for the daemon", value_parser = validate_args)]
-        scheme_path: Option<String>,
+        scheme_path: String,
         
         #[arg(value_name = "dependencies", help = "A list of dependencies for the daemon", value_parser = validate_args)]
         dependencies: Option<::std::vec::Vec<String>>,

@@ -187,7 +187,7 @@ pub fn rm_entry(name: &str) {
 }
 
 
-pub fn edit_entry(name: &str, o: bool, edit_args: &Vec<String>, scheme_path: String, dependencies: &Vec<String>) {
+pub fn edit_entry(name: &str, o: bool, edit_args: &Vec<String>, scheme_path: &str, dependencies: &Vec<String>) {
     let mut services = read_registry();
     if let Some(entry) = services.get_mut(name) {
         if entry.running {
@@ -203,7 +203,7 @@ pub fn edit_entry(name: &str, o: bool, edit_args: &Vec<String>, scheme_path: Str
         }
         
         if !scheme_path.is_empty() {
-            entry.scheme_path = scheme_path;
+            entry.scheme_path = scheme_path.to_string();
         } else if entry.scheme_path.is_empty() {
             entry.scheme_path = format!("/scheme/{}", name);
         }

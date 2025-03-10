@@ -312,7 +312,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     sm_scheme.cmd = None;
                 },
                 RegistryCommand::Edit { service_name, o, edit_args, scheme_path, dependencies } => {
-                    edit_entry(service_name, *o, edit_args.as_ref().unwrap(), scheme_path.as_ref().unwrap().clone(), dependencies.as_ref().unwrap());
+                    edit_entry(service_name, *o, edit_args.as_ref().unwrap(), scheme_path, dependencies.as_ref().unwrap());
                     sm_scheme.cmd = None;
                 }
             }
