@@ -301,6 +301,9 @@ impl Scheme for RandScheme {
 
     fn write(&mut self, file: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         // for service monitor timeout testing, if we write "timeout" to gtrand2 then read should also trigger an infinate loop:
+        while self.timeout {
+            // infanite loop to test timeout.
+        }
         if buf == b"timeout" {
             self.timeout = true;
         }
