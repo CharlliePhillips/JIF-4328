@@ -318,8 +318,6 @@ fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     }
 }
 
-
-
 fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     // can add args here later with '.arg()'
     if (!service.running) {
@@ -366,10 +364,6 @@ fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     }
 }
 
-
-
-
-
 fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     if service.running {
         update_service_info(service);
@@ -380,9 +374,32 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         info!("~sm time started registered versus time initialized: {}, {}", service.time_started, service.time_init);
 
         // set up the info string
-        let mut info_string = format!(
-        "\nService: {} \nUptime: {} \nLast time to initialize: {} \nRead count: {} \nWrite count: {} \nError count: {} \nMessage: \"{}\" ", 
-        service.name, uptime_string, time_init_string, service.read_count, service.write_count, service.error_count, service.message);
+        let info_string = format!(
+            "\nService: {} \nUptime: {} \nLast time to initialize: {} \n\
+            Live READ count: {}, Total: {} \n\
+            Live WRITE count: {}, Total: {}\n\
+            Live OPEN count: {}, Total: {} \n\
+            Live CLOSE count: {}, Total: {} \n\
+            Live DUP count: {}, Total: {} \n\
+            Live ERROR count: {}, Total: {} \n\
+            Message: \"{}\" ",
+            service.name,
+            uptime_string,
+            time_init_string,
+            service.read_count,
+            service.total_reads + service.read_count,
+            service.write_count,
+            service.total_writes + service.write_count,
+            service.open_count,
+            service.total_opens + service.open_count,
+            service.close_count,
+            service.total_closes + service.close_count,
+            service.dup_count,
+            service.total_dups + service.dup_count,
+            service.error_count,
+            service.total_errors + service.error_count,
+            service.message
+        );
         //info!("~sm info string: {:#?}", info_string);
 
         // set the info buffer to the formatted info string
@@ -394,89 +411,6 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         sm_scheme.cmd = None;
     }
 }
-// TODO merge this new info in ^^^^^
-//CMD_INFO => {
-//    if let Some(service) = services.get_mut(&sm_scheme.arg1) {
-//        if service.running {
-//            info!("found service: {}, grabbing info now", service.name);
-
-//            update_info(service);
-
-//            // set up time strings
-//            let time_init = Local.timestamp_millis_opt(service.time_init).unwrap();
-//            let current_time = Local::now();
-//            let duration = current_time.signed_duration_since(time_init);
-//            let hours = duration.num_hours();
-//            let minutes = duration.num_minutes() % 60;
-//            let seconds = duration.num_seconds() % 60;
-//            let millisecs = duration.num_milliseconds() % 1000;
-//            let seconds_with_millis =
-//                format!("{:.3}", seconds as f64 + (millisecs as f64 / 1000.0));
-//            let uptime_string = format!(
-//                "{} hours, {} minutes, {} seconds",
-//                hours, minutes, seconds_with_millis
-//            );
-
-//            // this may not be working, time values are always identical, need to check the the order of these values being created
-//            info!(
-//                "~sm time started registered versus time initialized: {}, {}",
-//                service.time_started, service.time_init
-//            );
-//            let time_started = Local.timestamp_millis_opt(service.time_started).unwrap();
-//            let init_duration = time_init.signed_duration_since(time_started);
-//            let init_minutes = init_duration.num_minutes();
-//            let init_seconds = init_duration.num_seconds() % 60;
-//            let init_millisecs = init_duration.num_milliseconds() % 1000;
-//            let init_seconds_with_millis = format!(
-//                "{:.3}",
-//                init_seconds as f64 + (init_millisecs as f64 / 1000.0)
-//            );
-//            let time_init_string = format!(
-//                "{} minutes, {} seconds",
-//                init_minutes, init_seconds_with_millis
-//            );
-
-//            // set up the info string
-//            let info_string = format!(
-//                "\nService: {} \nUptime: {} \nLast time to initialize: {} \n\
-//                Live READ count: {}, Total: {} \n\
-//                Live WRITE count: {}, Total: {}\n\
-//                Live OPEN count: {}, Total: {} \n\
-//                Live CLOSE count: {}, Total: {} \n\
-//                Live DUP count: {}, Total: {} \n\
-//                Live ERROR count: {}, Total: {} \n\
-//                Message: \"{}\" ",
-//                service.name,
-//                uptime_string,
-//                time_init_string,
-//                service.read_count,
-//                service.total_reads + service.read_count,
-//                service.write_count,
-//                service.total_writes + service.write_count,
-//                service.open_count,
-//                service.total_opens + service.open_count,
-//                service.close_count,
-//                service.total_closes + service.close_count,
-//                service.dup_count,
-//                service.total_dups + service.dup_count,
-//                service.error_count,
-//                service.total_errors + service.error_count,
-//                service.message
-//            );
-//            //info!("~sm info string: {:#?}", info_string);
-
-//            // set the info buffer to the formatted info string
-//            sm_scheme.info_buffer = info_string.as_bytes().to_vec();
-//        } else {
-//            // it should not fail to provide info, so this will need to be changed later
-//            warn!("info failed: {} is not running", service.name);
-//            sm_scheme.cmd = 0;
-//            sm_scheme.arg1 = "".to_string();
-//        }
-//    } else {
-//        warn!("info failed: no service named '{}'", sm_scheme.arg1);
-//        sm_scheme.cmd = 0;
-//        sm_scheme.arg1 = "".to_string();
 
 fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
     let mut endString:String = "Name | PID | Uptime | Message | Status\n".to_string();
@@ -530,9 +464,6 @@ fn time_string(start_time: i64, end_time: i64) -> String {
 
     parts.join(", ")
 }
-
-
-
 
 fn clear(service: &mut ServiceEntry) {
     // open the service scheme
