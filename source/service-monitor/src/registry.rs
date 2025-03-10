@@ -174,6 +174,7 @@ pub fn add_entry(
     };
     services.insert(name.to_string(), new_entry);
     write_registry(services);
+    
 }
 
 pub fn rm_entry(name: &str) {
@@ -185,7 +186,6 @@ pub fn rm_entry(name: &str) {
         println!("Service not found in registry");
     }
 }
-
 
 pub fn edit_entry(name: &str, o: bool, edit_args: &Vec<String>, scheme_path: &str, dependencies: &Vec<String>) {
     let mut services = read_registry();
@@ -219,6 +219,7 @@ pub fn edit_entry(name: &str, o: bool, edit_args: &Vec<String>, scheme_path: &st
         println!("Service not found in registry\nRegistry edit failed");
     }
 }
+
 pub fn edit_hash_entry(
     services: &mut HashMap<String, ServiceEntry>, 
     name: & str,
@@ -274,4 +275,64 @@ pub fn edit_hash_entry(
     } else {
         println!("Unable to edit Service Entry that is not present in internal list");
     }
-}   
+}
+
+pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: & str) {
+    let mut services_toml = read_registry();
+    if let Some(entry) = services_toml.get(name) {
+        println!("Service is still present in registry, unable to remove from internal list");
+    } else {
+        if services.contains_key(name) {    
+            let mut entry = services.get(name).unwrap();
+            if entry.running {
+                println!("Cannot remove an entry that is currently running");
+            } else {
+                services.remove(name);
+                println!("Removing service from internal list");
+            }
+        } else {
+            println!("Cannot find entry in internal list to remove");
+        }
+    }
+}
+
+pub fn add_hash_entry(
+    name: &str,
+    r#type: &str, //if this string were to be -o, we'd write "unmanaged" instead of "daemon"
+    args: &Vec<String>,
+    manual_override: bool,
+    scheme_path: &str,
+    depends: &Vec<String>, 
+    services: &mut HashMap<String, ServiceEntry>
+)
+{
+    
+    if services.contains_key(name) {
+        println!("Cannot add entry that is already present in internal list");
+    } else {
+        let new_entry = ServiceEntry {
+            name: name.to_string(),
+            r#type: r#type.to_string(),
+            args: args.to_vec(),
+            manual_override: manual_override,
+            depends: depends.to_vec(),
+            scheme_path: scheme_path.to_string(),
+            running: false,
+            pid: 0,
+            time_started: 0,
+            time_init: 0,
+            read_count: 0,
+            write_count: 0,
+            error_count: 0,
+            last_response_time: 0,
+            message: String::new(),
+            total_reads: 0, 
+            total_writes: 0,
+            total_opens: 0,
+            total_closes: 0,
+            total_dups: 0,  
+        };
+        services.insert(name.to_string(), new_entry);
+    }
+}
+//add old, add new, rm, view

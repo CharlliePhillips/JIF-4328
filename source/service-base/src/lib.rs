@@ -68,7 +68,7 @@ impl BaseScheme {
                 ))),
             time_stamp_scheme: Arc::new(Mutex::new(Box::new(
                 TimeStampScheme(
-                    Local::now().timestamp()
+                    Local::now().timestamp_millis()
                 )))),
             message_scheme: Arc::new(Mutex::new(Box::new(
                 MessageScheme([65; 32])))),
@@ -406,7 +406,7 @@ impl Managment {
     }
 
     pub fn start_managment(&mut self, message: &str) {
-        self.time_stamp = Local::now().timestamp();
+        self.time_stamp = Local::now().timestamp_millis();
         let mut message_len = message.as_bytes().len();
         if message_len > 32 {
             message_len = 32
