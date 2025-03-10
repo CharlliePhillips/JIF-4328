@@ -1,10 +1,11 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use chrono::prelude::*;
-use std::{fs::File, io::Read, path::Path};
+use std::{fs::File, fs::OpenOptions, io::Read, io::Write, path::Path};
 use hashbrown::HashMap;
+use log::{error, info, warn};
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Service {
     name: String,
     r#type: String,
@@ -39,7 +40,7 @@ pub struct ServiceEntry {
     pub total_dups: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Registry {
     service: Vec<Service>,
 }
@@ -96,4 +97,91 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
     services.insert(s.name, new_entry);
     }
     return services;
+}
+
+pub fn write_registry(registry : HashMap<String, ServiceEntry>) {
+    let path: &Path = Path::new("/usr/share/smregistry.toml"); //same as read_registry, this filepath is temporary.
+    let mut file = match File::create(&path) {
+        Err(err) => panic!("Unable to open smregistry.toml: {}", err),
+        Ok(file) => file,
+    };
+    let vals = registry.values();
+    let mut reconstructed : Vec<Service> = Vec::new();
+    for val in vals {
+        let new_service = Service {
+            name: val.name.clone(),
+            r#type: val.r#type.clone(),
+            args: val.args.clone(),
+            manual_override: val.manual_override,
+            depends: val.depends.clone(),
+            scheme_path: val.scheme_path.clone(),
+        };
+        reconstructed.push(new_service);
+    }
+    let registry_struct = Registry {
+        service: reconstructed,
+    };
+    let mut toml_str: String = toml::to_string(&registry_struct).unwrap();
+    match file.write_all(&mut toml_str.as_bytes()) {
+        Err(err) => panic!("Unable to read registry.toml as string: {}", err),
+        Ok(_) => {},
+    };
+}
+
+pub fn view_entry(name: &str) -> String {
+    let services = read_registry();
+    if let Some(entry) = services.get(name) {
+        let entry_string = format!(
+            "Service Name: {} \nType: {} \nArgs: {:?} \nManual Override: {} \nDepends: {:?} \nScheme Path: {}",
+            entry.name, entry.r#type, entry.args, entry.manual_override, entry.depends, entry.scheme_path
+        );
+        return entry_string;
+    } else {
+        return String::from("Service not found in registry");
+    }
+}
+
+pub fn add_entry(
+    name: &str,
+    r#type: &str, //if --old, this is "unmanaged" instead of "daemon"
+    args: &Vec<String>,
+    manual_override: bool,
+    scheme_path: &str,
+    depends: &Vec<String>) 
+{
+    let mut services = read_registry();
+    let new_entry = ServiceEntry {
+        name: name.to_string(),
+        r#type: r#type.to_string(),
+        args: args.to_vec(),
+        manual_override: manual_override,
+        depends: depends.to_vec(),
+        scheme_path: scheme_path.to_string(),
+        running: false,
+        pid: 0,
+        time_started: 0,
+        time_init: 0,
+        read_count: 0,
+        write_count: 0,
+        error_count: 0,
+        last_response_time: 0,
+        message: String::new(),
+        total_reads: 0, 
+        total_writes: 0,
+        total_opens: 0,
+        total_closes: 0,
+        total_dups: 0,
+    };
+    services.insert(name.to_string(), new_entry);
+    write_registry(services);
+}
+
+pub fn rm_entry(name: &str) {
+    let mut services = read_registry();
+    if let Some(entry) = services.get(name) {
+        services.remove(name);
+        write_registry(services);
+    } else {
+        println!("Service not found in registry");
+    }
 }

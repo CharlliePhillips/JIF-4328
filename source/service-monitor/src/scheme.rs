@@ -4,7 +4,7 @@ use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
 use log::info;
 use redox_scheme::Scheme;
 use syscall::{error::*, MODE_CHR};
-use shared::SMCommand;
+use shared::{RegistryCommand, SMCommand};
 
 //use std::fs::File;
 // Ty is to leave room for other types of monitor schemes
@@ -14,6 +14,18 @@ use shared::SMCommand;
 pub struct SMScheme {
     pub cmd: Option<SMCommand>,
     pub response_buffer: Vec<u8>,
+}
+
+impl SMScheme {
+    //temp for getting some stuff to work
+    fn read_buffer(&mut self, buf: &mut [u8]) -> Result<usize> {
+        let size = std::cmp::min(buf.len(), self.response_buffer.len());
+        buf[..size].copy_from_slice(&self.response_buffer[..size]);
+        //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
+        self.cmd = None; // unlike the other commands, needs to fix cmd here instead of in main
+        Ok(size)
+    }
+    
 }
 
 impl Scheme for SMScheme {
@@ -31,20 +43,26 @@ impl Scheme for SMScheme {
     }
 
     fn read(&mut self, _file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        match self.cmd {
+        match &self.cmd {
             Some(SMCommand::List) | Some(SMCommand::Info { .. }) => {
-                let size = std::cmp::min(buf.len(), self.response_buffer.len());
-                buf[..size].copy_from_slice(&self.response_buffer[..size]);
-                //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
-                self.cmd = None; // unlike the other commands, needs to fix cmd here instead of in main
-                Ok(size)
+                return self.read_buffer(buf);
+            }
+            Some(SMCommand::Registry{subcommand}) => {
+                match subcommand {
+                    RegistryCommand::View { .. } => {
+                        return self.read_buffer(buf);
+                        
+                    }
+                    _ => Ok(0)
+                }
             }
             _ => Ok(0)
         }
     }
+    
 
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
-        self.cmd = match SMCommand::from_bytes(buffer) {
+        self.cmd = match SMCommand::decode(buffer) {
             Ok(cmd) => Some(cmd),
             Err(_) => None
         };

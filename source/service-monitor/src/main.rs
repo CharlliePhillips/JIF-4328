@@ -2,7 +2,7 @@ use libredox::{call::{open, read, write}, flag::*};
 use log::{error, info, warn, LevelFilter};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
-use shared::SMCommand;
+use shared::{SMCommand, RegistryCommand};
 use std::{str, borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Child, Command, Stdio}};
 use hashbrown::HashMap;
 use scheme::SMScheme;
@@ -11,7 +11,7 @@ use chrono::prelude::*;
 use std::sync::mpsc::channel;
 mod scheme;
 mod registry;
-use registry::{read_registry, ServiceEntry};
+use registry::{read_registry, view_entry, add_entry, rm_entry, ServiceEntry};
 
 
 enum GenericData {
@@ -177,6 +177,29 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 // reset the current command value
                 sm_scheme.cmd = None;
             }
+        },
+        Some(SMCommand::Registry { subcommand }) => {
+            match subcommand {
+                RegistryCommand::View { service_name } => {
+                    let service_string = view_entry(service_name);
+                    sm_scheme.response_buffer = service_string.as_bytes().to_vec();
+                },
+                RegistryCommand::Add { service_name, old, args, manual_override, depends, scheme_path } => {
+                    let r#type = if *old { "unmanaged" } else { "daemon" };
+                    add_entry(service_name, r#type, args.as_ref().unwrap(), *manual_override, scheme_path, depends.as_ref().unwrap());
+                    sm_scheme.cmd = None;
+                },
+                RegistryCommand::Remove { service_name } => {
+                    rm_entry(service_name);
+                    sm_scheme.cmd = None;
+                },
+                RegistryCommand::Edit { service_name } => {
+                    sm_scheme.cmd = None;
+                },
+                //TODO: Add Edit
+            }
+            
+            
         },
         None => {},
         _ => {}
