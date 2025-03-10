@@ -283,6 +283,10 @@ pub fn edit_hash_entry(
             total_opens: entry.total_opens,
             total_closes: entry.total_closes,
             total_dups: entry.total_dups,
+            open_count: entry.open_count,
+            close_count: entry.close_count,
+            dup_count: entry.dup_count,
+            total_errors: entry.total_errors,
         };
         
         services.insert(name.to_string(), new_entry);
