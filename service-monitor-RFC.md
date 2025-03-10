@@ -139,10 +139,10 @@ A separate program with the name “services” will parse the arguments passed 
     - Adds an entry for a daemon into the list of managed services, it will be started by the SM with the command line args specified in the array. To manually register an old-style daemon for the SM to start but ignore (i.e. use the SM as init), a user could enter the command `services register –o <daemon_name> args=[]...` where the application path is a valid path to a binary (or the name of one on PATH?). The registry may need additional API calls for editing existing services’ info, we will need to decide if/how this will be controlled by arguments or additional commands.
     - `services register -rm <daemon_name>` 
     - `services register -edit <daemon_name> -o edit_args=[] scheme_path="/scheme/<daemon_name>" dependencies=["other_daemon"]` Takes tag -o (type = old daemon) and the variable arguments edit_args, scheme_path, and dependencies after `<daemon_name>` to update the registry entry for a service.
-    - for arguments `-rm` and `-edit` If that service is running when we attempt to edit/remove the registry, the changes will be reflected once the service has been stopped (and restarted for edit).
+    - For arguments `-rm` and `-edit`: If that service is running when we attempt to edit/remove it, the changes will be reflected once the service has been stopped (and restarted for edit).
     - `services register -info <daemon_name>` show the registry entry for the specified service.
 7. **services** / **services --help**
-    - Displays a help page detailing the available commands 
+    - Displays a help page detailing the available commands
 
 ## APIs and Message Flows 
 #### Managed Service API (new-style daemons)
