@@ -137,7 +137,7 @@ impl Scheme for BaseScheme {
         // check if we have an existing handler for this id
         if self.handlers.contains_key(&old_id) {
             match buf {
-                // if there is a matching ManagmentSubScheme name make a new id/handler for it
+                // if there is a matching ManagementSubScheme name make a new id/handler for it
                 b"pid" => {
                     let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.pid_scheme.clone());

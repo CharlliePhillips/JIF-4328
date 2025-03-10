@@ -11,7 +11,7 @@ use chrono::prelude::*;
 use std::sync::mpsc::channel;
 mod scheme;
 mod registry;
-use registry::{read_registry, view_entry, add_entry, rm_entry, ServiceEntry};
+use registry::{read_registry, view_entry, add_entry, rm_entry, edit_entry, ServiceEntry};
 
 
 enum GenericData {
@@ -188,12 +188,12 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 } else {
                     warn!("service: '{}' is already running", service.name);
                     // we only want to trigger this test on gtrand2 so it will only work when starting gtrand2 twice
-                    if (service.name == "gtrand2") {
+                    if service.name == "gtrand2" {
                         test_timeout(service);
                     }
 
                     // When we actually report the total number of reads/writes, it should actually be the total added
-                    // to whatever the current value in the service is, the toal stored in the service monitor is
+                    // to whatever the current value in the service is, the total stored in the service monitor is
                     // updated when the service's count is cleared.
                     info!("total reads: {}, total writes: {}", service.total_reads, service.total_writes);
                 }
@@ -311,12 +311,11 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     rm_entry(service_name);
                     sm_scheme.cmd = None;
                 },
-                RegistryCommand::Edit { service_name } => {
+                RegistryCommand::Edit { service_name, o, edit_args, scheme_path, dependencies } => {
+                    edit_entry(service_name, *o, edit_args.as_ref().unwrap(), scheme_path.as_ref().unwrap().clone(), dependencies.as_ref().unwrap());
                     sm_scheme.cmd = None;
-                },
-                //TODO: Add Edit
+                }
             }
-            
             
         },
         None => {},
@@ -440,7 +439,7 @@ fn rHelper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) {
         libredox::call::read(data_scheme, read_buf).expect("could not read data scheme");
         libredox::call::close(data_scheme);
     } else {
-        libredox::call::read(child_scheme, read_buf).expect("could not read data scheme");
+        libredox::call::read(child_scheme, read_buf).expect("could not read child scheme");
     }
 }
 

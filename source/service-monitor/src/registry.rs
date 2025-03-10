@@ -185,3 +185,37 @@ pub fn rm_entry(name: &str) {
         println!("Service not found in registry");
     }
 }
+
+
+pub fn edit_entry(name: &str, o: bool, edit_args: &Vec<String>, scheme_path: String, dependencies: &Vec<String>) {
+    let mut services = read_registry();
+    if let Some(entry) = services.get_mut(name) {
+        if entry.running {
+            warn!("Service is currently running");
+        }
+        
+        if o {
+            entry.r#type = "unmanaged".to_string();
+        }
+            
+        if !edit_args.is_empty() {
+            entry.args = edit_args.clone();
+        }
+        
+        if !scheme_path.is_empty() {
+            entry.scheme_path = scheme_path;
+        } else if entry.scheme_path.is_empty() {
+            entry.scheme_path = format!("/scheme/{}", name);
+        }
+        
+        for dep in dependencies {
+            if !entry.depends.contains(dep) {
+                entry.depends.push(dep.clone());
+            }
+        }
+            
+        write_registry(services);
+    } else {
+        println!("Service not found in registry\nRegistry edit failed");
+    }
+}
