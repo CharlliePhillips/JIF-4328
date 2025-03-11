@@ -1,9 +1,8 @@
-use serde::{Deserialize, Serialize};
 use chrono::prelude::*;
-use std::{fs::File, fs::OpenOptions, io::Read, io::Write, path::Path};
 use hashbrown::HashMap;
 use log::{error, info, warn};
-
+use serde::{Deserialize, Serialize};
+use std::{fs::File, fs::OpenOptions, io::Read, io::Write, path::Path};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Service {
@@ -34,7 +33,7 @@ pub struct ServiceEntry {
     pub close_count: u64,
     pub dup_count: u64,
     pub error_count: u64,
-    pub total_reads: u64, 
+    pub total_reads: u64,
     pub total_writes: u64,
     pub total_opens: u64,
     pub total_closes: u64,
@@ -61,7 +60,7 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
     let mut toml_str: String = String::new();
     match file.read_to_string(&mut toml_str) {
         Err(err) => panic!("Unable to read registry.toml as string: {}", err),
-        Ok(_) => {},
+        Ok(_) => {}
     };
 
     // dev comment: can access data like so:
@@ -93,7 +92,7 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
             close_count: 0,
             dup_count: 0,
             error_count: 0,
-            total_reads: 0, 
+            total_reads: 0,
             total_writes: 0,
             total_opens: 0,
             total_closes: 0,
@@ -101,21 +100,20 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
             total_errors: 0,
             last_response_time: 0,
             message: String::new(),
-
         };
-    services.insert(s.name, new_entry);
+        services.insert(s.name, new_entry);
     }
     return services;
 }
 
-pub fn write_registry(registry : HashMap<String, ServiceEntry>) {
+pub fn write_registry(registry: HashMap<String, ServiceEntry>) {
     let path: &Path = Path::new("/usr/share/smregistry.toml"); //same as read_registry, this filepath is temporary.
     let mut file = match File::create(&path) {
         Err(err) => panic!("Unable to open smregistry.toml: {}", err),
         Ok(file) => file,
     };
     let vals = registry.values();
-    let mut reconstructed : Vec<Service> = Vec::new();
+    let mut reconstructed: Vec<Service> = Vec::new();
     for val in vals {
         let new_service = Service {
             name: val.name.clone(),
@@ -133,7 +131,7 @@ pub fn write_registry(registry : HashMap<String, ServiceEntry>) {
     let mut toml_str: String = toml::to_string(&registry_struct).unwrap();
     match file.write_all(&mut toml_str.as_bytes()) {
         Err(err) => panic!("Unable to read registry.toml as string: {}", err),
-        Ok(_) => {},
+        Ok(_) => {}
     };
 }
 
@@ -156,8 +154,8 @@ pub fn add_entry(
     args: &Vec<String>,
     manual_override: bool,
     scheme_path: &str,
-    depends: &Vec<String>) 
-{
+    depends: &Vec<String>,
+) {
     let mut services = read_registry();
     let new_entry = ServiceEntry {
         name: name.to_string(),
@@ -176,7 +174,7 @@ pub fn add_entry(
         close_count: 0,
         dup_count: 0,
         error_count: 0,
-        total_reads: 0, 
+        total_reads: 0,
         total_writes: 0,
         total_opens: 0,
         total_closes: 0,
@@ -184,11 +182,9 @@ pub fn add_entry(
         total_errors: 0,
         last_response_time: 0,
         message: String::new(),
-
     };
     services.insert(name.to_string(), new_entry);
     write_registry(services);
-    
 }
 
 pub fn rm_entry(name: &str) {
@@ -201,33 +197,39 @@ pub fn rm_entry(name: &str) {
     }
 }
 
-pub fn edit_entry(name: &str, o: bool, edit_args: &Vec<String>, scheme_path: &str, dependencies: &Vec<String>) {
+pub fn edit_entry(
+    name: &str,
+    o: bool,
+    edit_args: &Vec<String>,
+    scheme_path: &str,
+    dependencies: &Vec<String>,
+) {
     let mut services = read_registry();
     if let Some(entry) = services.get_mut(name) {
         if entry.running {
             warn!("Service is currently running");
         }
-        
+
         if o {
             entry.r#type = "unmanaged".to_string();
         }
-            
+
         if !edit_args.is_empty() {
             entry.args = edit_args.clone();
         }
-        
+
         if !scheme_path.is_empty() {
             entry.scheme_path = scheme_path.to_string();
         } else if entry.scheme_path.is_empty() {
             entry.scheme_path = format!("/scheme/{}", name);
         }
-        
+
         for dep in dependencies {
             if !entry.depends.contains(dep) {
                 entry.depends.push(dep.clone());
             }
         }
-            
+
         write_registry(services);
     } else {
         println!("Service not found in registry\nRegistry edit failed");
@@ -235,13 +237,13 @@ pub fn edit_entry(name: &str, o: bool, edit_args: &Vec<String>, scheme_path: &st
 }
 
 pub fn edit_hash_entry(
-    services: &mut HashMap<String, ServiceEntry>, 
-    name: & str,
-    o: bool, 
+    services: &mut HashMap<String, ServiceEntry>,
+    name: &str,
+    o: bool,
     edit_args: &Vec<String>,
     scheme_path: &str,
-    depends: &Vec<String>)
-{
+    depends: &Vec<String>,
+) {
     if services.contains_key(name) {
         let mut entry = services.get_mut(name).unwrap();
         if o {
@@ -250,7 +252,7 @@ pub fn edit_hash_entry(
         if !edit_args.is_empty() {
             entry.args = edit_args.to_vec();
         }
-        
+
         if !scheme_path.is_empty() {
             entry.scheme_path = scheme_path.to_string();
         } else if entry.scheme_path.is_empty() {
@@ -261,7 +263,7 @@ pub fn edit_hash_entry(
                 entry.depends.push(dep.clone());
             }
         }
-        
+
         let new_entry = ServiceEntry {
             name: entry.name.to_string(),
             r#type: entry.r#type.clone(),
@@ -278,7 +280,7 @@ pub fn edit_hash_entry(
             error_count: entry.error_count,
             last_response_time: entry.last_response_time,
             message: entry.message.clone(),
-            total_reads: entry.total_reads, 
+            total_reads: entry.total_reads,
             total_writes: entry.total_writes,
             total_opens: entry.total_opens,
             total_closes: entry.total_closes,
@@ -288,19 +290,19 @@ pub fn edit_hash_entry(
             dup_count: entry.dup_count,
             total_errors: entry.total_errors,
         };
-        
+
         services.insert(name.to_string(), new_entry);
     } else {
         println!("Unable to edit Service Entry that is not present in internal list");
     }
 }
 
-pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: & str) {
+pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: &str) {
     let mut services_toml = read_registry();
     if let Some(entry) = services_toml.get(name) {
         println!("Service is still present in registry, unable to remove from internal list");
     } else {
-        if services.contains_key(name) {    
+        if services.contains_key(name) {
             let mut entry = services.get(name).unwrap();
             if entry.running {
                 println!("Cannot remove an entry that is currently running");
@@ -320,11 +322,9 @@ pub fn add_hash_entry(
     args: &Vec<String>,
     manual_override: bool,
     scheme_path: &str,
-    depends: &Vec<String>, 
-    services: &mut HashMap<String, ServiceEntry>
-)
-{
-    
+    depends: &Vec<String>,
+    services: &mut HashMap<String, ServiceEntry>,
+) {
     if services.contains_key(name) {
         println!("Cannot add entry that is already present in internal list");
     } else {
@@ -345,7 +345,7 @@ pub fn add_hash_entry(
             close_count: 0,
             dup_count: 0,
             error_count: 0,
-            total_reads: 0, 
+            total_reads: 0,
             total_writes: 0,
             total_opens: 0,
             total_closes: 0,
@@ -353,7 +353,6 @@ pub fn add_hash_entry(
             total_errors: 0,
             last_response_time: 0,
             message: String::new(),
-
         };
         services.insert(name.to_string(), new_entry);
     }

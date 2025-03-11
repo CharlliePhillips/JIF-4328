@@ -1,15 +1,24 @@
-use std::os::fd;
-use std::{borrow::BorrowMut, fmt::{format, Debug}, fs::{File, OpenOptions}, io::{Read, Write}, os::{fd::AsRawFd, unix::fs::OpenOptionsExt}, process::{Command, Stdio}};
-use libredox::{call::{open, read, write}, flag::{O_PATH, O_RDONLY}};
+use libredox::{
+    call::{open, read, write},
+    flag::{O_PATH, O_RDONLY},
+};
 use log::info;
 use redox_scheme::Scheme;
-use syscall::{error::*, MODE_CHR};
 use shared::{RegistryCommand, SMCommand};
+use std::os::fd;
+use std::{
+    borrow::BorrowMut,
+    fmt::{format, Debug},
+    fs::{File, OpenOptions},
+    io::{Read, Write},
+    os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
+    process::{Command, Stdio},
+};
+use syscall::{error::*, MODE_CHR};
 
 //use std::fs::File;
 // Ty is to leave room for other types of monitor schemes
 // maybe an int or enum for the command, string buffer for service name?
-
 
 pub struct SMScheme {
     pub cmd: Option<SMCommand>,
@@ -25,11 +34,9 @@ impl SMScheme {
         self.cmd = None; // unlike the other commands, needs to fix cmd here instead of in main
         Ok(size)
     }
-    
 }
 
 impl Scheme for SMScheme {
-
     fn open(&mut self, _path: &str, _flags: usize, _uid: u32, _gid: u32) -> Result<usize> {
         Ok(0)
     }
@@ -47,26 +54,22 @@ impl Scheme for SMScheme {
             Some(SMCommand::List) | Some(SMCommand::Info { .. }) => {
                 return self.read_buffer(buf);
             }
-            Some(SMCommand::Registry{subcommand}) => {
-                match subcommand {
-                    RegistryCommand::View { .. } => {
-                        return self.read_buffer(buf);
-                        
-                    }
-                    _ => Ok(0)
+            Some(SMCommand::Registry { subcommand }) => match subcommand {
+                RegistryCommand::View { .. } => {
+                    return self.read_buffer(buf);
                 }
-            }
-            _ => Ok(0)
+                _ => Ok(0),
+            },
+            _ => Ok(0),
         }
     }
-    
 
     fn write(&mut self, _file: usize, buffer: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         self.cmd = match SMCommand::decode(buffer) {
             Ok(cmd) => Some(cmd),
-            Err(_) => None
+            Err(_) => None,
         };
-        Ok(0)       
+        Ok(0)
     }
 
     fn fcntl(&mut self, _id: usize, _cmd: usize, _arg: usize) -> Result<usize> {

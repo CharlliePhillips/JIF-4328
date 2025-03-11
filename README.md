@@ -2,10 +2,31 @@
 A system health monitoring service for Redox OS
 
 ## Release Notes
+### Version 0.3.0
+
+#### New Features
+* The registry commands 'services registry ...' can be used to view and edit the registry.
+    - `services registry view <daemon_name>`
+    - `services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>`
+    - `services registry remove <daemon_name>`
+    - `services** / **services --help`
+    - This comes with a signifigant refactor to the way the service-monitor handles commands.
+
+* When the service monitor attempts to read from or write to a service that is not responding it will automatically try to restart it and complete the operation.
+
+#### Known Issues
+* BaseScheme will need an additional version to support services implementing SchemBlock instead of Scheme like disk drivers.
+* When attempting to run the service recovery test too quickly the whole OS will freeze. This is likely due to the threading used for timeout detection, other components may need to be refactored for multithreading for this to be fixed.
+* Start and Stop commands do not give CLI feedback and should.
+
+### Bug Fixes
+* The info and list commands now properly display services that are not running.
+
+## Release Notes
 ### Version 0.2.0
 
 #### New Features
-* The commands 'list' can be used to see a list of all registered services and some relevant data.
+* The command 'list' can be used to see a list of all registered services and some relevant data.
 `services list`
 * The command 'info' can be used to retrieve detailed data on a particular service.
 `services info gtrand`
