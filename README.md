@@ -9,6 +9,7 @@ A system health monitoring service for Redox OS
     - `services registry view <daemon_name>`
     - `services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>`
     - `services registry remove <daemon_name>`
+    - `services registry edit <daemon_name> <--o> "['arg1', 'arg2'...]" <scheme_path> "['dep1', 'dep2'...]"`
     - `services** / **services --help`
     - This comes with a signifigant refactor to the way the service-monitor handles commands.
 
