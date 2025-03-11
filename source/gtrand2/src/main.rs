@@ -1,6 +1,7 @@
 use std::process;
 
 use std::arch::asm;
+use std::time::Duration;
 
 use rand_chacha::ChaCha20Rng;
 use rand_core::RngCore;
@@ -290,6 +291,8 @@ impl Scheme for RandScheme {
 
         while self.timeout {
             // infanite loop to test timeout.
+            self.timeout = true;
+            println!("gtrand2 timing out");
         }
 
         if (self.error) {
@@ -303,18 +306,22 @@ impl Scheme for RandScheme {
         // for service monitor timeout testing, if we write "timeout" to gtrand2 then read should also trigger an infinate loop:
         while self.timeout {
             // infanite loop to test timeout.
-        }
-        if buf == b"timeout" {
             self.timeout = true;
-        }
-
-        if buf == b"error" {
-            self.error = true;
+            println!("gtrand2 timing out");
         }
 
         // Check fd and permissions
         self.can_perform_op_on_fd(file, MODE_WRITE)?;
-
+        if buf == b"timeout" {
+            self.timeout = true;
+        }
+        if self.error {
+            std::thread::sleep(Duration::from_secs(1));
+        }
+        if buf == b"error" {
+            self.error = true;
+        }
+        
         // TODO - when we support other entropy sources, just add this to an entropy pool
         // TODO - consider having trusted and untrusted entropy writing paths
         // We have a healthy mistrust of the entropy we're being given, so we won't seed just with

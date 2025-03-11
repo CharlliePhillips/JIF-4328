@@ -1,28 +1,27 @@
 use chrono::prelude::*;
-use redox_scheme::{RequestKind, Scheme, SignalBehavior, Socket, CallerCtx, OpenResult};
+use redox_scheme::{CallerCtx, OpenResult, RequestKind, Scheme, SignalBehavior, Socket};
 use syscall::data::Stat;
 use syscall::flag::EventFlags;
 use syscall::{
-    Error, Result, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC, O_CREAT,
-    O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY, SchemeMut
+    Error, Result, SchemeMut, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC,
+    O_CREAT, O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY,
 };
 
-use zerocopy::IntoBytes;
+use chrono::Local;
+use hashbrown::HashMap;
 use std::num::Wrapping;
-use std::sync::*;
+use std::ops::Deref;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use hashbrown::HashMap;
-use chrono::Local;
-use std::ops::Deref;
-
+use std::sync::*;
+use zerocopy::IntoBytes;
 
 type ManagementSubScheme = Arc<Mutex<Box<dyn ManagedScheme>>>;
 type SubSchemeGuard<'a> = MutexGuard<'a, Box<dyn ManagedScheme>>;
 
 struct PidScheme(u64);
-struct RequestsScheme{
-    reads: u64, 
+struct RequestsScheme {
+    reads: u64,
     writes: u64,
     opens: u64,
     closes: u64,
@@ -30,9 +29,9 @@ struct RequestsScheme{
     errors: u64,
 }
 struct TimeStampScheme(i64);
-struct MessageScheme([u8;32]);
+struct MessageScheme([u8; 32]);
 // will hold a command enum?
-struct ControlScheme{
+struct ControlScheme {
     stop: bool,
     clear: bool,
 }
@@ -55,75 +54,81 @@ impl BaseScheme {
     pub fn new(main_scheme: impl Scheme + 'static + ManagedScheme) -> Self {
         Self {
             main_scheme: Arc::new(Mutex::new(Box::new(main_scheme))),
-            pid_scheme: Arc::new(Mutex::new(Box::new(
-                PidScheme(
-                    std::process::id().try_into().unwrap()
-                )))),
-            requests_scheme: Arc::new(Mutex::new(Box::new(
-                    RequestsScheme{
-                        // these should all actually start at 0 but setting values for clear function testing
-                        reads: 0,
-                        writes: 0,
-                        opens: 0,
-                        closes: 0,
-                        dups: 0,
-                        errors: 0,
-                    }
-                ))),
-            time_stamp_scheme: Arc::new(Mutex::new(Box::new(
-                TimeStampScheme(
-                    Local::now().timestamp_millis()
-                )))),
-            message_scheme: Arc::new(Mutex::new(Box::new(
-                MessageScheme([65; 32])))),
-            control_scheme: Arc::new(Mutex::new(Box::new(
-                    ControlScheme{stop: false, clear: false}
-                ))),
+            pid_scheme: Arc::new(Mutex::new(Box::new(PidScheme(
+                std::process::id().try_into().unwrap(),
+            )))),
+            requests_scheme: Arc::new(Mutex::new(Box::new(RequestsScheme {
+                // these should all actually start at 0 but setting values for clear function testing
+                reads: 0,
+                writes: 0,
+                opens: 0,
+                closes: 0,
+                dups: 0,
+                errors: 0,
+            }))),
+            time_stamp_scheme: Arc::new(Mutex::new(Box::new(TimeStampScheme(
+                Local::now().timestamp_millis(),
+            )))),
+            message_scheme: Arc::new(Mutex::new(Box::new(MessageScheme([65; 32])))),
+            control_scheme: Arc::new(Mutex::new(Box::new(ControlScheme {
+                stop: false,
+                clear: false,
+            }))),
             handlers: HashMap::new(),
             next_mgmt_id: 9999.into(),
             management: Arc::new(Mutex::new(management::new())),
         }
     }
 
-    fn handler(&self, id: usize) -> Result<SubSchemeGuard>{
+    fn handler(&self, id: usize) -> Result<SubSchemeGuard> {
         let _update = self.update()?;
         match self.handlers.get(&id) {
             None => Err(Error::new(EBADF)),
-            Some(subscheme) => subscheme.lock().map_err(|err|
-                Error::new(EBADF)
-            ),
+            Some(subscheme) => subscheme.lock().map_err(|err| Error::new(EBADF)),
         }
     }
 
     // need to consider what value will be returned based on what update was made?
     // for now return 1 if cleared and 0 if not, error if control scheme cannot be locked
     fn update(&self) -> Result<usize> {
-        let mut control_lock = self.control_scheme.lock().map_err(|err| Error::new(EBADF))?;
-        let r_buf: &mut [u8] = &mut [b'\0';2];
+        let mut control_lock = self
+            .control_scheme
+            .lock()
+            .map_err(|err| Error::new(EBADF))?;
+        let r_buf: &mut [u8] = &mut [b'\0'; 2];
         // for now this id is unused but this could cause problems later
         control_lock.read(0, r_buf, 0, 0);
         // see ControlScheme fn read(), the byte at index one is our clear bit.
-        if r_buf[1] == 1{
+        if r_buf[1] == 1 {
             // TODO: figure out how graceful stop affects this
-            let mut message_lock = self.message_scheme.lock().map_err(|err| Error::new(EBADF))?;
+            let mut message_lock = self
+                .message_scheme
+                .lock()
+                .map_err(|err| Error::new(EBADF))?;
             message_lock.write(0, b"message cleared", 0, 0);
-            
+
             // TODO: get a lock on the reuqests scheme and write to clear it
-            let mut requests_lock = self.requests_scheme.lock().map_err(|err| Error::new(EBADF))?;
+            let mut requests_lock = self
+                .requests_scheme
+                .lock()
+                .map_err(|err| Error::new(EBADF))?;
             requests_lock.write(0, b"clear", 0, 0);
 
             // clear the control scheme so we know not to update again
             control_lock.write(0, b"cleared", 0, 0);
             return Ok(1);
-        } else if r_buf[0] == 1{
+        } else if r_buf[0] == 1 {
             // graceful shutdown code could go here?
             Ok(0)
         } else {
             // this is a normal data update.
-            let mut requests_lock = self.requests_scheme.lock().map_err(|err| Error::new(EBADF))?;
+            let mut requests_lock = self
+                .requests_scheme
+                .lock()
+                .map_err(|err| Error::new(EBADF))?;
             let management_lock = self.management.lock().map_err(|err| Error::new(EBADF))?;
-            let requests_update: &mut [u8;48] = &mut [0;48];
-            for i in 0..7{
+            let requests_update: &mut [u8; 48] = &mut [0; 48];
+            for i in 0..7 {
                 requests_update[i] = management_lock.reads.as_bytes()[i];
                 requests_update[i + 8] = management_lock.writes.as_bytes()[i];
                 requests_update[i + 16] = management_lock.opens.as_bytes()[i];
@@ -132,21 +137,24 @@ impl BaseScheme {
                 requests_update[i + 40] = management_lock.errors.as_bytes()[i];
             }
             requests_lock.write(0, requests_update, 0, 0);
-            
+
             Ok(0)
         }
     }
 
-    pub fn message(&self, message: &str) -> Result<[u8; 32]>{
+    pub fn message(&self, message: &str) -> Result<[u8; 32]> {
         let mut msg_arr: &mut [u8] = &mut [0; 32];
-        if (message.len() > 32){
+        if (message.len() > 32) {
             msg_arr.copy_from_slice(&message.as_bytes()[0..32]);
         } else {
             msg_arr[0..message.len()].copy_from_slice(&message.as_bytes());
         }
-        let mut message_lock = self.message_scheme.lock().map_err(|err| Error::new(EBADF))?;
+        let mut message_lock = self
+            .message_scheme
+            .lock()
+            .map_err(|err| Error::new(EBADF))?;
         message_lock.write(0, msg_arr, 0, 0);
-        
+
         let old_msg: &mut [u8] = &mut [0; 32];
         message_lock.read(0, old_msg, 0, 0);
         let mut msg_out: [u8; 32] = [0; 32];
@@ -156,18 +164,18 @@ impl BaseScheme {
 }
 impl Scheme for BaseScheme {
     // add ability to select subscheme from open by path?
-    fn xopen(&mut self, path: &str, flags: usize,  caller: &CallerCtx) -> Result<OpenResult> {
+    fn xopen(&mut self, path: &str, flags: usize, caller: &CallerCtx) -> Result<OpenResult> {
         // get a lock on the main scheme and attempt to open it
         let mut main_lock = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
-        let open_res = main_lock.xopen(path, flags, caller); 
+        let open_res = main_lock.xopen(path, flags, caller);
         // if we successfully open the main scheme and get ThisScheme{id,flags} then add a
         // new ManagementSubScheme to the list of handlers with that id.
         let mut management = self.management.lock().map_err(|err| Error::new(EBADF))?;
-        if let Ok(OpenResult::ThisScheme{number, flags}) = open_res {
+        if let Ok(OpenResult::ThisScheme { number, flags }) = open_res {
             self.handlers.insert(number, self.main_scheme.clone());
             // should we check that `count_ops()` is true?
             management.opens += 1;
-            
+
             open_res
         } else {
             // otherwise propogate the result
@@ -176,7 +184,7 @@ impl Scheme for BaseScheme {
             open_res
         }
     }
-    
+
     fn dup(&mut self, old_id: usize, buf: &[u8]) -> Result<usize> {
         // check if we have an existing handler for this id
         if self.handlers.contains_key(&old_id) {
@@ -205,7 +213,7 @@ impl Scheme for BaseScheme {
                     self.handlers.insert(new_id, self.requests_scheme.clone());
                     Ok(new_id)
                 }
-                
+
                 b"control" => {
                     let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.control_scheme.clone());
@@ -214,10 +222,12 @@ impl Scheme for BaseScheme {
 
                 // if there is nothing on the buffer then assume we want the main scheme
                 b"" => {
-                    let main_dup = self.main_scheme.lock()
-                    .map_err(|err| Error::new(EBADF))?
-                    .dup(old_id, buf)?;
-                    
+                    let main_dup = self
+                        .main_scheme
+                        .lock()
+                        .map_err(|err| Error::new(EBADF))?
+                        .dup(old_id, buf)?;
+
                     self.handlers.insert(main_dup, self.main_scheme.clone());
                     Ok(main_dup)
                 }
@@ -233,9 +243,9 @@ impl Scheme for BaseScheme {
                         Ok(new_id)
                     } else {
                         // we have already checked for the key so this should never run
-                        Err(syscall::Error {errno: EBADF})
+                        Err(syscall::Error { errno: EBADF })
                     }
-               }
+                }
             };
             // check to see if we want to record this dup
             let subscheme: SubSchemeGuard = self.handler(old_id)?;
@@ -248,10 +258,10 @@ impl Scheme for BaseScheme {
             // return the result of the match (subscheme dup)
             return result;
         } else {
-            Err(syscall::Error {errno: EBADF})
+            Err(syscall::Error { errno: EBADF })
         }
     }
-    
+
     fn read(&mut self, id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // lock the subscheme and management struct
         let mut subscheme: SubSchemeGuard = self.handler(id)?;
@@ -276,44 +286,38 @@ impl Scheme for BaseScheme {
             management.writes += 1;
         } else if (subscheme.count_ops()) {
             management.errors += 1;
-        } 
+        }
         return result;
     }
 
     // TODO: unimplemented BaseScheme functions should pass to the main Scheme instead of just Oking
     fn fcntl(&mut self, id: usize, cmd: usize, arg: usize) -> Result<usize> {
-        let mut main = self.main_scheme.lock()
-        .map_err(|err| Error::new(EBADF))?;
-                    
+        let mut main = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
+
         main.fcntl(id, cmd, arg)
     }
 
     fn fsize(&mut self, id: usize) -> Result<u64> {
-        let mut main = self.main_scheme.lock()
-        .map_err(|err| Error::new(EBADF))?;
-                    
+        let mut main = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
+
         main.fsize(id)
     }
 
     fn ftruncate(&mut self, id: usize, len: usize) -> Result<usize> {
-        let mut main = self.main_scheme.lock()
-        .map_err(|err| Error::new(EBADF))?;
-                    
+        let mut main = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
+
         main.ftruncate(id, len)
     }
 
-    
     fn fpath(&mut self, id: usize, buf: &mut [u8]) -> Result<usize> {
-        let mut main = self.main_scheme.lock()
-        .map_err(|err| Error::new(EBADF))?;
-                    
+        let mut main = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
+
         main.fpath(id, buf)
     }
 
     fn fsync(&mut self, id: usize) -> Result<usize> {
-        let mut main = self.main_scheme.lock()
-        .map_err(|err| Error::new(EBADF))?;
-                    
+        let mut main = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
+
         main.fsync(id)
     }
 
@@ -328,22 +332,21 @@ impl Scheme for BaseScheme {
                 management.closes += 1;
             } else if (result.is_err() && scheme.count_ops()) {
                 management.errors += 1;
-            } 
+            }
             drop(scheme);
             // we want to remove this id from the handlers map regardless close is success.
             // 'scheme' is retrieved from handlers map in 'fn handler()' so we have to drop it in
-            // order to modify the map. 
+            // order to modify the map.
             self.handlers.remove(&id);
             return result;
         } else {
-            Err(syscall::Error {errno: EBADF})
+            Err(syscall::Error { errno: EBADF })
         }
     }
 
     fn fstat(&mut self, id: usize, stat: &mut syscall::Stat) -> Result<usize> {
-        let mut main = self.main_scheme.lock()
-        .map_err(|err| Error::new(EBADF))?;
-                    
+        let mut main = self.main_scheme.lock().map_err(|err| Error::new(EBADF))?;
+
         main.fstat(id, stat)
     }
 }
@@ -361,8 +364,8 @@ impl Scheme for PidScheme {
 
 impl ManagedScheme for RequestsScheme {}
 impl Scheme for RequestsScheme {
-    fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize>{
-        if buf == b"clear"{
+    fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
+        if buf == b"clear" {
             self.reads = 0;
             self.writes = 0;
             self.opens = 0;
@@ -390,7 +393,7 @@ impl Scheme for RequestsScheme {
             self.errors = u64::from_ne_bytes(error_bytes);
         }
         Ok(buf.len())
-    } 
+    }
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let read_bytes = &self.reads.to_ne_bytes();
         let write_bytes = &self.writes.to_ne_bytes();
@@ -416,7 +419,7 @@ impl ManagedScheme for TimeStampScheme {}
 impl Scheme for TimeStampScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         let time_stamp = self.0.to_ne_bytes();
-        
+
         fill_buffer(buf, &time_stamp);
         Ok(buf.len())
     }
@@ -429,7 +432,7 @@ impl Scheme for MessageScheme {
         fill_buffer(buf, &self.0);
         Ok(buf.len())
     }
-    
+
     fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         // message is already stored as an array of bytes
         self.0 = [0; 32];
@@ -441,7 +444,7 @@ impl Scheme for MessageScheme {
 impl ManagedScheme for ControlScheme {}
 impl Scheme for ControlScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        // writes to the first two bytes indicating 
+        // writes to the first two bytes indicating
 
         buf[0] = u8::from(self.stop);
         buf[1] = u8::from(self.clear);
@@ -453,19 +456,17 @@ impl Scheme for ControlScheme {
             b"clear" => {
                 self.clear = true;
             }
-             
+
             b"cleared" => {
                 self.clear = false;
             }
-            
+
             b"stop" => {
                 self.stop = true;
             }
-            
-            _ => {
 
-            }
-        }  
+            _ => {}
+        }
         Ok(buf.len())
     }
     fn close(&mut self, _id: usize) -> Result<usize> {
@@ -496,27 +497,26 @@ pub struct management {
     // [0] = read, [1] = write
     // TODO: this should probably get split into 5 integers for read, write, open, close, and dup
     // request_count: (u64, u64),
-    reads: u64, 
+    reads: u64,
     writes: u64,
     opens: u64,
     closes: u64,
     dups: u64,
     errors: u64,
-
 }
 
 impl management {
     //constructor
     pub fn new() -> management {
         management {
-            response_buf: [0;32],
+            response_buf: [0; 32],
             response_pending: false,
             pid: std::process::id().try_into().unwrap(),
             // init timestamp to unix epoch
             time_stamp: 0,
-            message: [0;32],
-           // request_count: (13, 42),
-            reads: 0, 
+            message: [0; 32],
+            // request_count: (13, 42),
+            reads: 0,
             writes: 0,
             opens: 0,
             closes: 0,
@@ -527,7 +527,7 @@ impl management {
 }
 
 pub trait ManagedScheme: Scheme {
-    fn count_ops(&self) -> bool{
+    fn count_ops(&self) -> bool {
         return false;
     }
     fn shutdown(&mut self) -> bool {
