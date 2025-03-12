@@ -123,3 +123,20 @@ impl SMCommand {
             .map_err(|e| format!("Failed to decode bytes into SMCommand: {}", e))
     }
 }
+
+pub struct TableFormatOptions {
+    padding: u8,
+    use_first_row_as_header: bool,
+    draw_border: bool,
+}
+
+pub const DEFAULT_TABLE_FORMAT: TableFormatOptions = TableFormatOptions{
+    padding: 2,
+    use_first_row_as_header: true,
+    draw_border: false
+};
+
+// TODO
+pub fn stringify_table<T>(table: &Vec<T>, row_size: u32, format_options: &TableFormatOptions) -> String {
+    String::from("")
+}
