@@ -129,9 +129,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 warn!("start failed: no service named '{}'", service_name);
             }
         }
-        Some(SMCommand::List) => {
-            list(services, sm_scheme)
-        }
+        Some(SMCommand::List) => list(services, sm_scheme),
         Some(SMCommand::Clear { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 info!("Clearing short-term stats for '{}'", service.name);
@@ -667,7 +665,9 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
                     Ok(result) => {
                         // dropping the reciever here should intterupt the sender's thread, stop trying to read and return
                         drop(receiver);
-                        write_thread.join().expect("write timeout thread didn't join!");
+                        write_thread
+                            .join()
+                            .expect("write timeout thread didn't join!");
                         let _close_res = libredox::call::close(write_scheme);
                         try_again = false;
                         result
@@ -675,7 +675,9 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
                     Err(_recv_err) => {
                         drop(receiver);
                         warn!("write operation on {} timed out!", service.name);
-                        write_thread.join().expect("write timeout thread didn't join!");
+                        write_thread
+                            .join()
+                            .expect("write timeout thread didn't join!");
                         // attempt to recover the service, once this returns, if the service is still running then it has ben successfully recovered
                         if recover(service) {
                             try_again = true;

@@ -28,7 +28,11 @@ pub struct SMScheme {
 
 impl SMScheme {
     pub fn new() -> SMScheme {
-        SMScheme { cmd: None, response_buffer: Vec::new(), read_index: 0 }
+        SMScheme {
+            cmd: None,
+            response_buffer: Vec::new(),
+            read_index: 0,
+        }
     }
 
     /// Write to the response buffer. If the response buffer has content already in it,
@@ -65,7 +69,9 @@ impl Scheme for SMScheme {
             let res_len = self.response_buffer.len() - self.read_index;
             let size = std::cmp::min(buf_len, res_len);
             if buf_len < res_len {
-                buf.copy_from_slice(&self.response_buffer[self.read_index..(size + self.read_index)]);
+                buf.copy_from_slice(
+                    &self.response_buffer[self.read_index..(size + self.read_index)],
+                );
             } else {
                 buf[..size].copy_from_slice(&self.response_buffer[self.read_index..]);
             }
