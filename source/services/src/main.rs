@@ -1,16 +1,8 @@
-use clap::{Args, Parser, Subcommand};
-use libredox::{
-    call::{open, read, write},
-    flag::{O_PATH, O_RDONLY},
-};
+use clap::Parser;
 use shared::{RegistryCommand, SMCommand};
 use std::{
-    borrow::BorrowMut,
-    fmt::{format, Debug},
     fs::{File, OpenOptions},
     io::{Read, Write},
-    os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
-    process::{Command, Stdio},
 };
 
 #[derive(Parser)]
@@ -36,7 +28,8 @@ fn main() {
         .encode()
         .expect("Failed to encode command to byte buffer");
     let success =
-        File::write(sm_fd, &cmd_bytes).expect("Failed to write command to service monitor");
+        File::write(sm_fd, &cmd_bytes)
+            .expect("Failed to write command to service monitor");
 
     if success == 0 {
         print_response(&cli.cmd, sm_fd);
@@ -62,7 +55,8 @@ fn get_response_message(sm_fd: &mut File) {
     // 1024 is kinda arbitrary here, may cause issues later
     let mut response_buffer = vec![0u8; 1024];
     let size =
-        File::read(sm_fd, &mut response_buffer).expect("Failed to read PIDs from service monitor");
+        File::read(sm_fd, &mut response_buffer)
+            .expect("Failed to read PIDs from service monitor");
     response_buffer.truncate(size);
 
     let mut data_string = match std::str::from_utf8(&response_buffer) {
