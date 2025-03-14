@@ -4,10 +4,7 @@
         "source/gtrand2/Cargo.toml",
         "source/service-base/Cargo.toml",
         "source/service-monitor/Cargo.toml",
+        "source/shared/Cargo.toml",
         "source/services/Cargo.toml",
     ]
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> e872f2a (realized why rust-analyzer didn't work right in here, timeout code not working but cleaned up and compiles)
