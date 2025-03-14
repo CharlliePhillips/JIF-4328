@@ -20,7 +20,6 @@ struct Cli {
     cmd: SMCommand,
 }
 
-// todo: replace with Clap crate for robust parsing and help-text
 // todo: report back if service-name is invalid in start, stop commands
 fn main() {
     let cli = Cli::parse();
@@ -60,14 +59,15 @@ fn print_response(cmd: &SMCommand, sm_fd: &mut File) {
 }
 
 fn get_response_message(sm_fd: &mut File) {
-    let mut response_buffer = vec![0u8; 1024]; // 1024 is kinda arbitrary here, may cause issues later
+    // 1024 is kinda arbitrary here, may cause issues later
+    let mut response_buffer = vec![0u8; 1024];
     let size =
         File::read(sm_fd, &mut response_buffer).expect("Failed to read PIDs from service monitor");
     response_buffer.truncate(size);
 
     let mut data_string = match std::str::from_utf8(&response_buffer) {
         Ok(data) => data,
-        Err(e) => "<data not a valid string>",
+        Err(_) => "<data not a valid string>",
     }
     .to_string();
     data_string.retain(|c| c != '\0');
