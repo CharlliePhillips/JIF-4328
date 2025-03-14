@@ -22,17 +22,27 @@ use syscall::{error::*, MODE_CHR};
 
 pub struct SMScheme {
     pub cmd: Option<SMCommand>,
-    pub response_buffer: Vec<u8>,
+    response_buffer: Vec<u8>,
+    read_index: usize,
 }
 
 impl SMScheme {
-    //temp for getting some stuff to work
-    fn read_buffer(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let size = std::cmp::min(buf.len(), self.response_buffer.len());
-        buf[..size].copy_from_slice(&self.response_buffer[..size]);
-        //info!("Read {} bytes from info_buffer: {:?}", size, &buf[..size]);
-        self.cmd = None; // unlike the other commands, needs to fix cmd here instead of in main
-        Ok(size)
+    pub fn new() -> SMScheme {
+        SMScheme { cmd: None, response_buffer: Vec::new(), read_index: 0 }
+    }
+
+    /// Write to the response buffer. If the response buffer has content already in it,
+    /// it will be overwritten.
+    pub fn write_response(&mut self, buf: &[u8]) -> Result<usize> {
+        self.response_buffer = buf.to_vec();
+        self.read_index = 0;
+        Ok(buf.len())
+    }
+
+    /// Writes to the response buffer by appending bytes to the end of it.
+    pub fn append_response(&mut self, buf: &[u8]) -> Result<usize> {
+        self.response_buffer.append(&mut buf.to_vec());
+        Ok(buf.len())
     }
 }
 
@@ -50,17 +60,19 @@ impl Scheme for SMScheme {
     }
 
     fn read(&mut self, _file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
-        match &self.cmd {
-            Some(SMCommand::List) | Some(SMCommand::Info { .. }) => {
-                return self.read_buffer(buf);
+        if self.read_index != self.response_buffer.len() {
+            let buf_len = buf.len();
+            let res_len = self.response_buffer.len() - self.read_index;
+            let size = std::cmp::min(buf_len, res_len);
+            if buf_len < res_len {
+                buf.copy_from_slice(&self.response_buffer[self.read_index..(size + self.read_index)]);
+            } else {
+                buf[..size].copy_from_slice(&self.response_buffer[self.read_index..]);
             }
-            Some(SMCommand::Registry { subcommand }) => match subcommand {
-                RegistryCommand::View { .. } => {
-                    return self.read_buffer(buf);
-                }
-                _ => Ok(0),
-            },
-            _ => Ok(0),
+            self.read_index = self.read_index + size;
+            Ok(size)
+        } else {
+            Ok(0)
         }
     }
 

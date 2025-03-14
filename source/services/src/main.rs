@@ -1,5 +1,5 @@
 use clap::Parser;
-use shared::{RegistryCommand, SMCommand};
+use shared::SMCommand;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
@@ -27,44 +27,31 @@ fn main() {
         .cmd
         .encode()
         .expect("Failed to encode command to byte buffer");
-    let success =
-        File::write(sm_fd, &cmd_bytes)
+
+    File::write(sm_fd, &cmd_bytes)
             .expect("Failed to write command to service monitor");
 
-    if success == 0 {
-        print_response(&cli.cmd, sm_fd);
+    // print_response(&cli.cmd, sm_fd);
+    let response: Vec<u8> = get_response(sm_fd);
+    if response.len() > 0 {
+        // TODO: replace with TOML parsing and dynamically construct the correct printout
+        println!("{}", std::str::from_utf8(&response)
+            .expect("Error parsing response to UTF8")
+            .to_string()
+        );
     }
 }
 
-fn print_response(cmd: &SMCommand, sm_fd: &mut File) {
-    match cmd {
-        SMCommand::List | SMCommand::Info { service_name: _ } => {
-            get_response_message(sm_fd);
+fn get_response(sm_fd: &mut File) -> Vec<u8> {
+    let mut response = Vec::<u8>::new();
+    loop {
+        let mut buf = [0u8; 1024];
+        let size =
+            File::read(sm_fd, &mut buf).expect("Failed to read PIDs from service monitor");
+        if size == 0 {
+            break;
         }
-        SMCommand::Registry { subcommand } => match subcommand {
-            RegistryCommand::View { service_name: _ } => {
-                get_response_message(sm_fd);
-            }
-            _ => {}
-        },
-        _ => {}
+        response.extend_from_slice(&buf[..size]);
     }
-}
-
-fn get_response_message(sm_fd: &mut File) {
-    // 1024 is kinda arbitrary here, may cause issues later
-    let mut response_buffer = vec![0u8; 1024];
-    let size =
-        File::read(sm_fd, &mut response_buffer)
-            .expect("Failed to read PIDs from service monitor");
-    response_buffer.truncate(size);
-
-    let mut data_string = match std::str::from_utf8(&response_buffer) {
-        Ok(data) => data,
-        Err(_) => "<data not a valid string>",
-    }
-    .to_string();
-    data_string.retain(|c| c != '\0');
-
-    println!("{}", data_string);
+    return response;
 }

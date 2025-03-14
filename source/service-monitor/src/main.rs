@@ -64,10 +64,7 @@ fn main() {
         let socket =
             Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
-        let mut sm_scheme = SMScheme {
-            cmd: None,
-            response_buffer: Vec::new(),
-        };
+        let mut sm_scheme = SMScheme::new();
 
         info!(
             "service-monitor daemonized with pid: {}",
@@ -123,8 +120,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             } else {
                 warn!("stop failed: no service named '{}'", service_name);
             }
-            // reset the current command value
-            sm_scheme.cmd = None;
         }
         Some(SMCommand::Start { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
@@ -133,20 +128,15 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             } else {
                 warn!("start failed: no service named '{}'", service_name);
             }
-            // reset the current command value
-            sm_scheme.cmd = None;
         }
         Some(SMCommand::List) => {
             list(services, sm_scheme)
-            // ! do not reset the current command value -> wait for scheme.rs to handle it
         }
         Some(SMCommand::Clear { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 info!("Clearing short-term stats for '{}'", service.name);
                 clear(service);
             }
-            // reset the current command value
-            sm_scheme.cmd = None;
         }
         Some(SMCommand::Info { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
@@ -154,14 +144,12 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 info(service, sm_scheme);
             } else {
                 warn!("info failed: no service named '{}'", service_name);
-                // reset the current command value
-                sm_scheme.cmd = None;
             }
         }
         Some(SMCommand::Registry { subcommand }) => match subcommand {
             RegistryCommand::View { service_name } => {
                 let service_string = view_entry(service_name);
-                sm_scheme.response_buffer = service_string.as_bytes().to_vec();
+                sm_scheme.write_response(service_string.as_bytes());
             }
             RegistryCommand::Add {
                 service_name,
@@ -196,12 +184,10 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 } else {
                     println!("key not found!");
                 }
-                sm_scheme.cmd = None;
             }
             RegistryCommand::Remove { service_name } => {
                 rm_entry(service_name);
                 rm_hash_entry(services, service_name);
-                sm_scheme.cmd = None;
             }
             RegistryCommand::Edit {
                 service_name,
@@ -225,12 +211,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     scheme_path,
                     dependencies.as_ref().unwrap(),
                 );
-                sm_scheme.cmd = None;
             }
         },
         None => {}
         _ => {}
     }
+    // reset the current command value
+    sm_scheme.cmd = None;
 }
 
 fn update_service_info(service: &mut ServiceEntry) {
@@ -405,7 +392,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         //info!("~sm info string: {:#?}", info_string);
 
         // set the info buffer to the formatted info string
-        sm_scheme.response_buffer = info_string.as_bytes().to_vec();
+        sm_scheme.write_response(info_string.as_bytes());
     } else {
         let info_string = format!(
             "\nService: {} is STOPPED\n\
@@ -426,7 +413,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
             service.message
         );
         // set the info buffer to the formatted info string
-        sm_scheme.response_buffer = info_string.as_bytes().to_vec();
+        sm_scheme.write_response(info_string.as_bytes());
         //sm_scheme.cmd = None;
     }
 }
@@ -449,16 +436,14 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSchem
             );
             info!("line: {}", listString);
             endString.push_str(&listString);
-
             info!("End: {}", endString);
-            info!("{:#?}", sm_scheme.response_buffer.as_ptr());
         } else {
             let stopped_string = format!("{} | none | none | none | not running\n", service.name);
             endString.push_str(&stopped_string);
         }
     }
 
-    sm_scheme.response_buffer = endString.as_bytes().to_vec();
+    sm_scheme.write_response(endString.as_bytes());
 }
 
 // function that takes a time difference and returns a string of the time in hours, minutes, and seconds
