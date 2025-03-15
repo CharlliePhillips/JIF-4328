@@ -1,7 +1,6 @@
 use std::process;
 
 use std::arch::asm;
-use std::time::Duration;
 
 use rand_chacha::ChaCha20Rng;
 use rand_core::RngCore;
@@ -14,11 +13,11 @@ pub const MODE_READ: u16 = 0o4;
 #[cfg(target_arch = "x86_64")]
 use raw_cpuid::CpuId;
 
-use redox_scheme::{CallerCtx, OpenResult, RequestKind, Scheme, SignalBehavior, Socket};
+use redox_scheme::{RequestKind, Scheme, SignalBehavior, Socket};
 use syscall::data::Stat;
 use syscall::flag::EventFlags;
 use syscall::{
-    Error, Result, SchemeMut, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC,
+    Error, Result, EBADF, EBADFD, EEXIST, ENOENT, EPERM, MODE_CHR, O_CLOEXEC,
     O_CREAT, O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY,
 };
 // Create an RNG Seed to create initial seed from the rdrand intel instruction
@@ -28,13 +27,8 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::num::Wrapping;
 // new lib service_base
-use chrono::Local;
 use service_base::BaseScheme;
 use service_base::ManagedScheme;
-use std::ops::Deref;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::*;
 
 // This Daemon implements a Cryptographically Secure Random Number Generator
 // that does not block on read - i.e. it is equivalent to linux /dev/urandom
@@ -173,7 +167,9 @@ impl RandScheme {
 
 #[test]
 fn test_scheme_perms() {
-    let mut scheme = RandScheme::new(File::open(".").unwrap());
+    // TODO: figure out these tests. this new() fn signature doesn't exist
+    // let mut scheme = RandScheme::new(File::open(".").unwrap());
+    let mut scheme = RandScheme::new();
     scheme.prng_stat.st_mode = MODE_CHR | 0o200;
     scheme.prng_stat.st_uid = 1;
     scheme.prng_stat.st_gid = 1;
