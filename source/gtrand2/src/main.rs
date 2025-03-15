@@ -278,6 +278,7 @@ impl Scheme for RandScheme {
     fn read(&mut self, file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // Check fd and permissions
         self.can_perform_op_on_fd(file, MODE_READ)?;
+        
 
         // Setting the stream will ensure that if two clients are reading concurrently, they won't get the same numbers
         self.prng.set_stream(file as u64); // Should probably find a way to re-instate the counter for this stream, but
@@ -316,14 +317,14 @@ impl Scheme for RandScheme {
         if buf == b"error" {
             self.error = true;
         }
-
+        
         // TODO - when we support other entropy sources, just add this to an entropy pool
         // TODO - consider having trusted and untrusted entropy writing paths
         // We have a healthy mistrust of the entropy we're being given, so we won't seed just with
         // that as the resulting numbers would be predictable based on this input
         // we'll take 512 bits (arbitrary) from the current PRNG, and seed with that
         // and the supplied data.
-
+        
         let mut rng_buf: [u8; SEED_BYTES] = [0; SEED_BYTES];
         self.prng.fill_bytes(&mut rng_buf);
         let mut rng_vec = Vec::new();
@@ -331,6 +332,7 @@ impl Scheme for RandScheme {
         rng_vec.extend(buf);
         self.reseed_prng(&rng_vec);
         Ok(buf.len())
+
     }
 
     fn fchmod(&mut self, file: usize, mode: u16) -> Result<usize> {
@@ -415,7 +417,7 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
 
     libredox::call::setrens(0, 0).expect("randd: failed to enter null namespace");
 
-    let _ = scheme.message("starting!");
+     let _ = scheme.message("starting!");
 
     while let Some(request) = socket
         .next_request(SignalBehavior::Restart)
@@ -425,7 +427,7 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
             continue;
         };
         let response = call.handle_scheme(&mut scheme);
-        socket
+            socket
             .write_responses(&[response], SignalBehavior::Restart)
             .expect("error writing packet");
     }
@@ -436,3 +438,4 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
 fn main() {
     redox_daemon::Daemon::new(daemon).expect("randd: failed to daemonize");
 }
+

@@ -273,6 +273,7 @@ impl Scheme for RandScheme {
     fn read(&mut self, file: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
         // Check fd and permissions
         self.can_perform_op_on_fd(file, MODE_READ)?;
+        
 
         // Setting the stream will ensure that if two clients are reading concurrently, they won't get the same numbers
         self.prng.set_stream(file as u64); // Should probably find a way to re-instate the counter for this stream, but
@@ -291,7 +292,7 @@ impl Scheme for RandScheme {
         // that as the resulting numbers would be predictable based on this input
         // we'll take 512 bits (arbitrary) from the current PRNG, and seed with that
         // and the supplied data.
-
+        
         let mut rng_buf: [u8; SEED_BYTES] = [0; SEED_BYTES];
         self.prng.fill_bytes(&mut rng_buf);
         let mut rng_vec = Vec::new();
@@ -299,6 +300,7 @@ impl Scheme for RandScheme {
         rng_vec.extend(buf);
         self.reseed_prng(&rng_vec);
         Ok(buf.len())
+
     }
 
     fn fchmod(&mut self, file: usize, mode: u16) -> Result<usize> {
@@ -391,7 +393,7 @@ fn daemon(daemon: redox_daemon::Daemon) -> ! {
             continue;
         };
         let response = call.handle_scheme(&mut scheme);
-        socket
+            socket
             .write_responses(&[response], SignalBehavior::Restart)
             .expect("error writing packet");
     }
@@ -403,3 +405,4 @@ fn main() {
     //std::thread::sleep(Duration::from_millis(13));
     redox_daemon::Daemon::new(daemon).expect("randd: failed to daemonize");
 }
+
