@@ -20,6 +20,8 @@ A system health monitoring service for Redox OS
 - When attempting to run the service recovery test too quickly the whole OS will freeze. This is likely due to the threading used for timeout detection, other components may need to be refactored for multithreading for this to be fixed.
 - Start and Stop commands do not give CLI feedback and should.
 - Excluding the dependencies argument from `services registry edit` causes a panic
+- Error text for depends list for `services registry add` prefixes the list with 'args' instead of 'depends'
+- Depends list for `services registry add` is shown as optional, but omitting causes clap parser to demand it
 
 ### Bug Fixes
 - The info and list commands now properly display services that are not running.
