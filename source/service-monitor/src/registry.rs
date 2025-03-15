@@ -4,25 +4,20 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, fs::OpenOptions, io::Read, io::Write, path::Path};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Service {
-    name: String,
-    r#type: String,
-    args: Vec<String>,
-    manual_override: bool,
-    depends: Vec<String>,
-    scheme_path: String,
-}
-
-// we may want to consider the visibility of these a little more carefully, all set to pub rn to make things work.
-// this def needs a better name though.
-pub struct ServiceEntry {
     pub name: String,
     pub r#type: String,
     pub args: Vec<String>,
     pub manual_override: bool,
     pub depends: Vec<String>,
     pub scheme_path: String,
+}
+
+// we may want to consider the visibility of these a little more carefully, all set to pub rn to make things work.
+// this def needs a better name though.
+pub struct ServiceEntry {
+    pub config: Service,
     pub running: bool,
     pub pid: usize,
     pub time_started: i64,
@@ -76,12 +71,7 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
     let registry: Registry = toml::from_str(&toml_str).expect("Unable to parse registry.toml");
     for s in registry.service {
         let new_entry = ServiceEntry {
-            name: s.name.clone(),
-            r#type: s.r#type,
-            args: s.args,
-            manual_override: s.manual_override,
-            depends: s.depends,
-            scheme_path: s.scheme_path,
+            config: s,
             running: false,
             pid: 0,
             time_started: 0,
@@ -101,7 +91,7 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
             last_response_time: 0,
             message: String::new(),
         };
-        services.insert(s.name, new_entry);
+        services.insert(new_entry.config.name.clone(), new_entry);
     }
     return services;
 }
@@ -115,14 +105,7 @@ pub fn write_registry(registry: HashMap<String, ServiceEntry>) {
     let vals = registry.values();
     let mut reconstructed: Vec<Service> = Vec::new();
     for val in vals {
-        let new_service = Service {
-            name: val.name.clone(),
-            r#type: val.r#type.clone(),
-            args: val.args.clone(),
-            manual_override: val.manual_override,
-            depends: val.depends.clone(),
-            scheme_path: val.scheme_path.clone(),
-        };
+        let new_service = val.config.clone();
         reconstructed.push(new_service);
     }
     let registry_struct = Registry {
@@ -140,7 +123,7 @@ pub fn view_entry(name: &str) -> String {
     if let Some(entry) = services.get(name) {
         let entry_string = format!(
             "Service Name: {} \nType: {} \nArgs: {:?} \nManual Override: {} \nDepends: {:?} \nScheme Path: {}",
-            entry.name, entry.r#type, entry.args, entry.manual_override, entry.depends, entry.scheme_path
+            entry.config.name, entry.config.r#type, entry.config.args, entry.config.manual_override, entry.config.depends, entry.config.scheme_path
         );
         return entry_string;
     } else {
@@ -158,12 +141,14 @@ pub fn add_entry(
 ) {
     let mut services = read_registry();
     let new_entry = ServiceEntry {
-        name: name.to_string(),
-        r#type: r#type.to_string(),
-        args: args.to_vec(),
-        manual_override: manual_override,
-        depends: depends.to_vec(),
-        scheme_path: scheme_path.to_string(),
+        config: Service {
+            name: name.to_string(),
+            r#type: r#type.to_string(),
+            args: args.to_vec(),
+            manual_override: manual_override,
+            depends: depends.to_vec(),
+            scheme_path: scheme_path.to_string(),
+        },
         running: false,
         pid: 0,
         time_started: 0,
@@ -211,22 +196,22 @@ pub fn edit_entry(
         }
 
         if o {
-            entry.r#type = "unmanaged".to_string();
+            entry.config.r#type = "unmanaged".to_string();
         }
 
         if !edit_args.is_empty() {
-            entry.args = edit_args.clone();
+            entry.config.args = edit_args.clone();
         }
 
         if !scheme_path.is_empty() {
-            entry.scheme_path = scheme_path.to_string();
-        } else if entry.scheme_path.is_empty() {
-            entry.scheme_path = format!("/scheme/{}", name);
+            entry.config.scheme_path = scheme_path.to_string();
+        } else if entry.config.scheme_path.is_empty() {
+            entry.config.scheme_path = format!("/scheme/{}", name);
         }
 
         for dep in dependencies {
-            if !entry.depends.contains(dep) {
-                entry.depends.push(dep.clone());
+            if !entry.config.depends.contains(dep) {
+                entry.config.depends.push(dep.clone());
             }
         }
 
@@ -247,30 +232,26 @@ pub fn edit_hash_entry(
     if services.contains_key(name) {
         let mut entry = services.get_mut(name).unwrap();
         if o {
-            entry.r#type = "unmanaged".to_string();
+            entry.config.r#type = "unmanaged".to_string();
         }
         if !edit_args.is_empty() {
-            entry.args = edit_args.to_vec();
+            entry.config.args = edit_args.to_vec();
         }
 
         if !scheme_path.is_empty() {
-            entry.scheme_path = scheme_path.to_string();
-        } else if entry.scheme_path.is_empty() {
-            entry.scheme_path = format!("/scheme/{}", name);
+            entry.config.scheme_path = scheme_path.to_string();
+        } else if entry.config.scheme_path.is_empty() {
+            entry.config.scheme_path = format!("/scheme/{}", name);
         }
         for dep in depends {
-            if !entry.depends.contains(dep) {
-                entry.depends.push(dep.clone());
+            if !entry.config.depends.contains(dep) {
+                entry.config.depends.push(dep.clone());
             }
         }
 
+        // TODO: why are we cloning the entry we just edited?
         let new_entry = ServiceEntry {
-            name: entry.name.to_string(),
-            r#type: entry.r#type.clone(),
-            args: entry.args.clone(),
-            manual_override: entry.manual_override,
-            depends: entry.depends.clone(),
-            scheme_path: entry.scheme_path.clone(),
+            config: entry.config.clone(),
             running: entry.running,
             pid: entry.pid,
             time_started: entry.time_started,
@@ -329,12 +310,14 @@ pub fn add_hash_entry(
         println!("Cannot add entry that is already present in internal list");
     } else {
         let new_entry = ServiceEntry {
-            name: name.to_string(),
-            r#type: r#type.to_string(),
-            args: args.to_vec(),
-            manual_override: manual_override,
-            depends: depends.to_vec(),
-            scheme_path: scheme_path.to_string(),
+            config: Service {
+                name: name.to_string(),
+                r#type: r#type.to_string(),
+                args: args.to_vec(),
+                manual_override: manual_override,
+                depends: depends.to_vec(),
+                scheme_path: scheme_path.to_string(),
+            },
             running: false,
             pid: 0,
             time_started: 0,

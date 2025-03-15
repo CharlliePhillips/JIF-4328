@@ -115,7 +115,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     match &sm_scheme.cmd {
         Some(SMCommand::Stop { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                info!("Stopping '{}'", service.name);
+                info!("Stopping '{}'", service.config.name);
                 stop(service, sm_scheme);
             } else {
                 warn!("stop failed: no service named '{}'", service_name);
@@ -123,7 +123,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         }
         Some(SMCommand::Start { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                info!("Starting '{}'", service.name);
+                info!("Starting '{}'", service.config.name);
                 start(service);
             } else {
                 warn!("start failed: no service named '{}'", service_name);
@@ -132,13 +132,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         Some(SMCommand::List) => list(services, sm_scheme),
         Some(SMCommand::Clear { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                info!("Clearing short-term stats for '{}'", service.name);
+                info!("Clearing short-term stats for '{}'", service.config.name);
                 clear(service);
             }
         }
         Some(SMCommand::Info { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                info!("Finding information for '{}'", service.name);
+                info!("Finding information for '{}'", service.config.name);
                 info(service, sm_scheme);
             } else {
                 warn!("info failed: no service named '{}'", service_name);
@@ -147,7 +147,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         Some(SMCommand::Registry { subcommand }) => match subcommand {
             RegistryCommand::View { service_name } => {
                 let service_string = view_entry(service_name);
-                sm_scheme.write_response(service_string.as_bytes());
+                let _ = sm_scheme.write_response(service_string.as_bytes());
             }
             RegistryCommand::Add {
                 service_name,
@@ -178,7 +178,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 if services.contains_key(service_name) {
                     println!("key found!");
                     let mut entry = services.get(service_name).unwrap();
-                    println!("{}", entry.scheme_path);
+                    println!("{}", entry.config.scheme_path);
                 } else {
                     println!("key not found!");
                 }
@@ -219,7 +219,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 }
 
 fn update_service_info(service: &mut ServiceEntry) {
-    info!("Updating information for: {}", service.name);
+    info!("Updating information for: {}", service.config.name);
 
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
 
@@ -274,14 +274,14 @@ fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
         service.running = false;
     } else {
-        warn!("stop failed: {} was already stopped", service.name);
+        warn!("stop failed: {} was already stopped", service.config.name);
     }
 }
 
 fn start(service: &mut ServiceEntry) {
     // can add args here later with '.arg()'
-    if (!service.running) {
-        match std::process::Command::new(service.name.as_str()).spawn() {
+    if !service.running {
+        match std::process::Command::new(service.config.name.as_str()).spawn() {
             Ok(mut child) => {
                 //service.pid = child.id().try_into().unwrap();
                 //service.pid += 2;
@@ -289,12 +289,12 @@ fn start(service: &mut ServiceEntry) {
                 match child.wait() {
                     Ok(_ext) => {}
                     Err(_) => {
-                        error!("{} failed to start!", service.name);
+                        error!("{} failed to start!", service.config.name);
                         return;
                     }
                 }
                 let child_scheme =
-                    match libredox::call::open(service.scheme_path.clone(), O_RDWR, 1) {
+                    match libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 1) {
                         Ok(fd) => fd,
                         Err(_) => {
                             error!("failed to open service scheme!");
@@ -329,13 +329,13 @@ fn start(service: &mut ServiceEntry) {
             }
 
             Err(e) => {
-                warn!("start failed: could not start {}", service.name);
+                warn!("start failed: could not start {}", service.config.name);
             }
         };
     } else {
-        warn!("service: '{}' is already running", service.name);
+        warn!("service: '{}' is already running", service.config.name);
         //test_service_data(service);
-        if service.name == "gtrand2" {
+        if &service.config.name == "gtrand2" {
             test_timeout(service);
         }
         // When we actually report the total number of reads/writes, it should actually be the total added
@@ -370,7 +370,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
                 Live DUP count: {}, Total: {} \n\
                 Live ERROR count: {}, Total: {} \n\
                 Message: \"{}\" ",
-            service.name,
+            service.config.name,
             uptime_string,
             time_init_string,
             service.read_count,
@@ -401,7 +401,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
             Total DUP count: {}\n\
             Total ERROR count: {}\n\
             Last message: \"{}\"",
-            service.name,
+            service.config.name,
             service.total_reads,
             service.total_writes,
             service.total_opens,
@@ -430,13 +430,13 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSchem
 
             let listString = format!(
                 "{} | {} | {} | {} | Running\n",
-                service.name, service.pid, uptime_string, service.message
+                service.config.name, service.pid, uptime_string, service.message
             );
             info!("line: {}", listString);
             endString.push_str(&listString);
             info!("End: {}", endString);
         } else {
-            let stopped_string = format!("{} | none | none | none | not running\n", service.name);
+            let stopped_string = format!("{} | none | none | none | not running\n", service.config.name);
             endString.push_str(&stopped_string);
         }
     }
@@ -565,7 +565,7 @@ fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> R
     let mut try_again = true;
     let mut result: Result<usize> = Err(Error::new(EBADF));
     while try_again {
-        result = match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
+        result = match libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 0) {
             Ok(child_scheme) => {
                 // determine which scheme we are trying to read from
                 let read_scheme = if !data.is_empty() {
@@ -605,7 +605,7 @@ fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> R
                     }
                     Err(_recv_err) => {
                         drop(receiver);
-                        warn!("read operation on {} timed out!", service.name);
+                        warn!("read operation on {} timed out!", service.config.name);
                         // attempt to recover the service, once this returns, if the service is still running then it has ben successfully recovered
                         if recover(service) {
                             try_again = true;
@@ -628,7 +628,7 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
     let mut try_again = true;
     let mut result: Result<usize> = Err(Error::new(EBADF));
     while try_again {
-        result = match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
+        result = match libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 0) {
             Ok(child_scheme) => {
                 // determine which scheme we are trying to read from
                 let write_scheme = if !subscheme_name.is_empty() {
@@ -674,7 +674,7 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
                     }
                     Err(_recv_err) => {
                         drop(receiver);
-                        warn!("write operation on {} timed out!", service.name);
+                        warn!("write operation on {} timed out!", service.config.name);
                         write_thread
                             .join()
                             .expect("write timeout thread didn't join!");
@@ -700,11 +700,11 @@ fn recover(service: &mut ServiceEntry) -> bool {
     let _kill_res = syscall::kill(service.pid, syscall::SIGKILL);
     service.running = false;
     service.time_started = Local::now().timestamp_millis(); // where should this go for the start command?
-    let running = match std::process::Command::new(service.name.as_str()).spawn() {
+    let running = match std::process::Command::new(service.config.name.as_str()).spawn() {
         Ok(mut child) => {
             child.wait();
 
-            let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
+            let child_scheme = libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 1)
                 .expect("couldn't open child scheme");
             let pid_req = b"pid";
             let pid_scheme = libredox::call::dup(child_scheme, pid_req).expect("could not get pid");
@@ -712,7 +712,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
             let read_buffer: &mut [u8] = &mut [b'0'; 32];
             libredox::call::read(pid_scheme, read_buffer).expect("could not read pid");
 
-            let _recover_res = match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
+            let _recover_res = match libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 0) {
                 Ok(child_scheme) => {
                     // determine which scheme we are trying to read from
                     let pid_scheme = {
@@ -741,7 +741,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
                         Ok(result) => {
                             // dropping the reciever here should intterupt the sender's thread, stop trying to read and return
                             drop(receiver);
-                            info!("recovered {} from timeout", service.name);
+                            info!("recovered {} from timeout", service.config.name);
                             read_buffer.clone_from_slice(
                                 &read_thread.join().expect("didn't join!?")[0..read_buffer.len()],
                             );
@@ -772,7 +772,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
         }
 
         Err(_e) => {
-            warn!("start failed: could not restart {}", service.name);
+            warn!("start failed: could not restart {}", service.config.name);
             service.running
         }
     };
