@@ -1,8 +1,7 @@
-use chrono::prelude::*;
 use hashbrown::HashMap;
-use log::{error, info, warn};
+use log::warn;
 use serde::{Deserialize, Serialize};
-use std::{fs::File, fs::OpenOptions, io::Read, io::Write, path::Path};
+use std::{fs::File, io::Read, io::Write, path::Path};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Service {
@@ -111,7 +110,7 @@ pub fn write_registry(registry: HashMap<String, ServiceEntry>) {
     let registry_struct = Registry {
         service: reconstructed,
     };
-    let mut toml_str: String = toml::to_string(&registry_struct).unwrap();
+    let toml_str: String = toml::to_string(&registry_struct).unwrap();
     match file.write_all(&mut toml_str.as_bytes()) {
         Err(err) => panic!("Unable to read registry.toml as string: {}", err),
         Ok(_) => {}
@@ -174,7 +173,7 @@ pub fn add_entry(
 
 pub fn rm_entry(name: &str) {
     let mut services = read_registry();
-    if let Some(entry) = services.get(name) {
+    if let Some(_entry) = services.get(name) {
         services.remove(name);
         write_registry(services);
     } else {
@@ -230,7 +229,7 @@ pub fn edit_hash_entry(
     depends: &Vec<String>,
 ) {
     if services.contains_key(name) {
-        let mut entry = services.get_mut(name).unwrap();
+        let entry = services.get_mut(name).unwrap();
         if o {
             entry.config.r#type = "unmanaged".to_string();
         }
@@ -279,12 +278,12 @@ pub fn edit_hash_entry(
 }
 
 pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: &str) {
-    let mut services_toml = read_registry();
-    if let Some(entry) = services_toml.get(name) {
+    let services_toml = read_registry();
+    if let Some(_entry) = services_toml.get(name) {
         println!("Service is still present in registry, unable to remove from internal list");
     } else {
         if services.contains_key(name) {
-            let mut entry = services.get(name).unwrap();
+            let entry = services.get(name).unwrap();
             if entry.running {
                 println!("Cannot remove an entry that is currently running");
             } else {

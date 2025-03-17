@@ -1,30 +1,21 @@
 use chrono::prelude::*;
 use hashbrown::HashMap;
 use libredox::{
-    call::{open, read, write},
     errno::*,
     error::*,
     flag::*,
 };
-use log::{error, info, warn, LevelFilter};
+use log::{error, info, warn};
 use redox_log::{OutputBuilder, RedoxLogger};
-use redox_scheme::{Request, RequestKind, Scheme, SchemeBlock, SignalBehavior, Socket};
+use redox_scheme::{RequestKind, SignalBehavior, Socket};
 use scheme::SMScheme;
 use shared::{RegistryCommand, SMCommand};
-use std::sync::mpsc::channel;
 use std::{
-    borrow::BorrowMut,
-    fmt::{format, Debug},
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
-    process::{Child, Command, Stdio},
     str,
     sync::mpsc,
     thread,
     time::Duration,
 };
-use timer;
 mod registry;
 mod scheme;
 use registry::{
@@ -32,6 +23,7 @@ use registry::{
     view_entry, ServiceEntry,
 };
 
+// todo: remove (unused)
 enum GenericData {
     Byte(u8),
     Short(u16),
@@ -177,7 +169,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 );
                 if services.contains_key(service_name) {
                     println!("key found!");
-                    let mut entry = services.get(service_name).unwrap();
+                    let entry = services.get(service_name).unwrap();
                     println!("{}", entry.config.scheme_path);
                 } else {
                     println!("key not found!");
@@ -212,7 +204,6 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             }
         },
         None => {}
-        _ => {}
     }
     // reset the current command value
     sm_scheme.cmd = None;
@@ -223,11 +214,11 @@ fn update_service_info(service: &mut ServiceEntry) {
 
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
 
-    read_helper(service, read_buffer, "message");
+    let _ = read_helper(service, read_buffer, "message");
     // grab the string
     let mut message_string = match str::from_utf8(&read_buffer) {
         Ok(data) => data,
-        Err(e) => "<data not a valid string>",
+        Err(_) => "<data not a valid string>",
     }
     .to_string();
     // change trailing 0 chars into empty string
@@ -236,7 +227,7 @@ fn update_service_info(service: &mut ServiceEntry) {
     service.message = message_string;
 
     // get and print read, write, open, close, & dup count, they are successive u64 bytes read from requests subscheme
-    read_helper(service, read_buffer, "request_count");
+    let _ = read_helper(service, read_buffer, "request_count");
 
     let mut read_bytes: [u8; 8] = [0; 8];
     let mut write_bytes: [u8; 8] = [0; 8];
@@ -258,9 +249,9 @@ fn update_service_info(service: &mut ServiceEntry) {
     service.error_count = u64::from_ne_bytes(error_bytes);
 
     // get and process the start time
-    read_helper(service, read_buffer, "time_stamp");
+    let _ = read_helper(service, read_buffer, "time_stamp");
     let mut time_bytes = [0; 8];
-    for mut i in 0..8 {
+    for i in 0..8 {
         time_bytes[i] = read_buffer[i];
     }
     let time_init_int = i64::from_ne_bytes(time_bytes);
@@ -268,10 +259,11 @@ fn update_service_info(service: &mut ServiceEntry) {
 }
 
 fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
+    let _ = sm_scheme;
     if service.running {
         clear(service);
         info!("trying to kill pid {}", service.pid);
-        let killRet = syscall::call::kill(service.pid, syscall::SIGKILL);
+        let _kill_ret = syscall::call::kill(service.pid, syscall::SIGKILL);
         service.running = false;
     } else {
         warn!("stop failed: {} was already stopped", service.config.name);
@@ -328,7 +320,7 @@ fn start(service: &mut ServiceEntry) {
                 service.running = true;
             }
 
-            Err(e) => {
+            Err(_e) => {
                 warn!("start failed: could not start {}", service.config.name);
             }
         };
@@ -411,13 +403,13 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
             service.message
         );
         // set the info buffer to the formatted info string
-        sm_scheme.write_response(info_string.as_bytes());
+        let _ = sm_scheme.write_response(info_string.as_bytes());
         //sm_scheme.cmd = None;
     }
 }
 
 fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
-    let mut endString: String = "Name | PID | Uptime | Message | Status\n".to_string();
+    let mut end_string: String = "Name | PID | Uptime | Message | Status\n".to_string();
 
     //let mut listString = "";
     //hashmap_bytes(services, sm_scheme);
@@ -428,20 +420,20 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSchem
             // set up time strings
             let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
 
-            let listString = format!(
+            let list_string = format!(
                 "{} | {} | {} | {} | Running\n",
                 service.config.name, service.pid, uptime_string, service.message
             );
-            info!("line: {}", listString);
-            endString.push_str(&listString);
-            info!("End: {}", endString);
+            info!("line: {}", list_string);
+            end_string.push_str(&list_string);
+            info!("End: {}", end_string);
         } else {
             let stopped_string = format!("{} | none | none | none | not running\n", service.config.name);
-            endString.push_str(&stopped_string);
+            end_string.push_str(&stopped_string);
         }
     }
 
-    sm_scheme.write_response(endString.as_bytes());
+    let _ = sm_scheme.write_response(end_string.as_bytes());
 }
 
 // function that takes a time difference and returns a string of the time in hours, minutes, and seconds
@@ -473,7 +465,7 @@ fn time_string(start_time: i64, end_time: i64) -> String {
 fn clear(service: &mut ServiceEntry) {
     // read the requests into a buffer
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
-    read_helper(service, read_buffer, "request_count");
+    let _ = read_helper(service, read_buffer, "request_count");
 
     // turn that buffer into read/write as integers
     let mut read_bytes: [u8; 8] = [0; 8];
@@ -497,7 +489,7 @@ fn clear(service: &mut ServiceEntry) {
     service.total_errors += u64::from_ne_bytes(error_bytes);
 
     // clear the data and close the schemes.
-    write_helper(service, "control", "clear");
+    let _ = write_helper(service, "control", "clear");
 }
 
 fn test_timeout(gtrand2: &mut ServiceEntry) {
@@ -533,28 +525,30 @@ fn test_timeout(gtrand2: &mut ServiceEntry) {
     }
 }
 
+// todo: remove (unused)
 fn test_count_ops(service: &mut ServiceEntry) -> i64 {
     let read_buf = &mut [b'0'; 8];
-    read_helper(service, read_buf, "");
+    let _ = read_helper(service, read_buf, "");
     info!(
         "successfully read random {:#?}",
         i64::from_ne_bytes(*read_buf)
     );
-    write_helper(service, "", "");
+    let _ = write_helper(service, "", "");
     return i64::from_ne_bytes(*read_buf);
 }
 
+// todo: remove (unused)
 fn test_err(gtrand2: &mut ServiceEntry) {
     let timeout_req = "error";
-    write_helper(gtrand2, "", timeout_req);
+    let _ = write_helper(gtrand2, "", timeout_req);
     let read_buf = &mut [b'0'; 32];
     // for now we expect this to hang,
     match read_helper(gtrand2, read_buf, "") {
-        Ok(i) => {
+        Ok(_) => {
             // whatever happens here, do nothing, just testing
             warn!("test error failed!");
         }
-        Err(e) => {
+        Err(_) => {
             // whatever happens here, do nothing, just testing
             info!("test error success!");
         }
@@ -702,7 +696,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
     service.time_started = Local::now().timestamp_millis(); // where should this go for the start command?
     let running = match std::process::Command::new(service.config.name.as_str()).spawn() {
         Ok(mut child) => {
-            child.wait();
+            let _ = child.wait();
 
             let child_scheme = libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 1)
                 .expect("couldn't open child scheme");
@@ -750,7 +744,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
                         Err(_recv_err) => {
                             drop(receiver);
                             // for now just kill the service that timed out and return an error
-                            syscall::call::kill(service.pid, syscall::SIGKILL);
+                            let _ = syscall::call::kill(service.pid, syscall::SIGKILL);
                             service.running = false;
                             Err(Error::new(EBADF))
                         }
@@ -779,6 +773,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
     running
 }
 
+// todo: remove (unused)
 fn extract_bytes(data_vec: &Vec<GenericData>) -> Vec<u8> {
     data_vec
         .iter()
