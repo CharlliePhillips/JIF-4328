@@ -1,19 +1,5 @@
-use libredox::{
-    call::{open, read, write},
-    flag::{O_PATH, O_RDONLY},
-};
-use log::info;
 use redox_scheme::Scheme;
 use shared::{RegistryCommand, SMCommand};
-use std::os::fd;
-use std::{
-    borrow::BorrowMut,
-    fmt::{format, Debug},
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
-    process::{Command, Stdio},
-};
 use syscall::{error::*, MODE_CHR};
 
 //use std::fs::File;

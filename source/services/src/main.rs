@@ -1,16 +1,8 @@
-use clap::{Args, Parser, Subcommand};
-use libredox::{
-    call::{open, read, write},
-    flag::{O_PATH, O_RDONLY},
-};
+use clap::Parser;
 use shared::{RegistryCommand, SMCommand};
 use std::{
-    borrow::BorrowMut,
-    fmt::{format, Debug},
     fs::{File, OpenOptions},
     io::{Read, Write},
-    os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
-    process::{Command, Stdio},
 };
 
 #[derive(Parser)]
@@ -67,7 +59,7 @@ fn get_response_message(sm_fd: &mut File) {
 
     let mut data_string = match std::str::from_utf8(&response_buffer) {
         Ok(data) => data,
-        Err(e) => "<data not a valid string>",
+        Err(_) => "<data not a valid string>",
     }
     .to_string();
     data_string.retain(|c| c != '\0');

@@ -14,14 +14,13 @@ pub const MODE_READ: u16 = 0o4;
 #[cfg(target_arch = "x86_64")]
 use raw_cpuid::CpuId;
 
-use redox_scheme::{RequestKind, Scheme, SignalBehavior, Socket, CallerCtx, OpenResult};
+use redox_scheme::{RequestKind, Scheme, SignalBehavior, Socket};
 use syscall::data::Stat;
 use syscall::flag::EventFlags;
 use syscall::{
-    Error, Result, EBADF, EBADFD, EEXIST, EINVAL, ENOENT, EPERM, MODE_CHR, O_CLOEXEC, O_CREAT,
-    O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY, SchemeMut
+    Error, Result, EBADF, EBADFD, EEXIST, ENOENT, EPERM, MODE_CHR, O_CLOEXEC,
+    O_CREAT, O_EXCL, O_RDONLY, O_RDWR, O_STAT, O_WRONLY,
 };
-use libredox::{call::{open, read, write}, flag::*, error::*, errno::*};
 // Create an RNG Seed to create initial seed from the rdrand intel instruction
 use rand_core::SeedableRng;
 use sha2::{Digest, Sha256};
@@ -30,12 +29,7 @@ use std::collections::BTreeMap;
 use std::num::Wrapping;
 // new lib service_base
 use service_base::BaseScheme;
-use service_base::ManagedScheme;        
-use std::sync::*;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use chrono::Local;
-use std::ops::Deref;
+use service_base::ManagedScheme;
 
 // This Daemon implements a Cryptographically Secure Random Number Generator
 // that does not block on read - i.e. it is equivalent to linux /dev/urandom
@@ -178,7 +172,9 @@ impl RandScheme {
 
 #[test]
 fn test_scheme_perms() {
-    let mut scheme = RandScheme::new(File::open(".").unwrap());
+    // TODO: figure out these tests. this new() fn signature doesn't exist
+    // let mut scheme = RandScheme::new(File::open(".").unwrap());
+    let mut scheme = RandScheme::new();
     scheme.prng_stat.st_mode = MODE_CHR | 0o200;
     scheme.prng_stat.st_uid = 1;
     scheme.prng_stat.st_gid = 1;
@@ -295,7 +291,7 @@ impl Scheme for RandScheme {
             println!("gtrand2 timing out");
         }
 
-        if (self.error) {
+        if self.error {
             return Err(Error::new(EBADF));
         }
 
