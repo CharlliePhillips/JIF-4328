@@ -369,7 +369,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
 
         // set up the info string
         let info_string = format!(
-            "\nService: {} \nUptime: {} \nLast time to initialize: {} \n\
+            "Service: {} \nUptime: {} \nLast time to initialize: {} \n\
                 Live READ count: {}, Total: {} \n\
                 Live WRITE count: {}, Total: {}\n\
                 Live OPEN count: {}, Total: {} \n\
@@ -400,7 +400,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         sm_scheme.response_buffer = info_string.as_bytes().to_vec();
     } else {
         let info_string = format!(
-            "\nService: {} is STOPPED\n\
+            "Service: {} is STOPPED\n\
             Total READ count: {}\n\
             Total WRITE count: {}\n\
             Total OPEN count: {}\n\
@@ -439,11 +439,11 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSchem
                 "{} | {} | {} | {} | Running\n",
                 service.name, service.pid, uptime_string, service.message
             );
-            info!("line: {}", list_string);
+            //info!("line: {}", list_string); //service info
             end_string.push_str(&list_string);
 
-            info!("End: {}", end_string);
-            info!("{:#?}", sm_scheme.response_buffer.as_ptr());
+            //info!("End: {}", end_string); //end string
+            //info!("{:#?}", sm_scheme.response_buffer.as_ptr()); //prints whole buffer
         } else {
             let stopped_string = format!("{} | none | none | none | not running\n", service.name);
             end_string.push_str(&stopped_string);
