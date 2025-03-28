@@ -92,7 +92,10 @@ fn validate_args(s: &str) -> Result<Vec<String>, String> {
 impl SMCommand {
     pub fn encode(&self) -> Result<Vec<u8>, String> {
         toml::to_string(self)
-            .map(|s| s.into_bytes())
+            .map(|s| {
+                println!("TOML:\n{s}");
+                s.into_bytes()
+            })
             .map_err(|e| format!("Failed to encode SMCommand into string: {}", e))
     }
 
@@ -105,4 +108,23 @@ impl SMCommand {
         toml::from_str(toml_str)
             .map_err(|e| format!("Failed to decode bytes into SMCommand: {}", e))           
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ServiceRuntimeStats {
+    pub name: String,
+    pub pid: usize,
+    pub time_init: i64,
+    pub time_started: i64,
+    pub time_now: i64,
+    pub message: String,
+    pub running: bool,
+
+}
+
+/// Message variant
+#[derive(Serialize, Deserialize)]
+pub enum TOMLMessage {
+    String(String),
+    ServiceStats(Vec<ServiceRuntimeStats>),
 }

@@ -9,7 +9,7 @@ use log::{error, info, warn};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{RequestKind, SignalBehavior, Socket};
 use scheme::SMScheme;
-use shared::{RegistryCommand, SMCommand};
+use shared::{RegistryCommand, SMCommand, ServiceRuntimeStats, TOMLMessage};
 use std::{
     str,
     sync::mpsc,
@@ -131,7 +131,11 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         Some(SMCommand::Registry { subcommand }) => match subcommand {
             RegistryCommand::View { service_name } => {
                 let service_string = view_entry(service_name);
-                let _ = sm_scheme.write_response(service_string.as_bytes());
+                let msg = TOMLMessage::String(service_string);
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                        .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
             }
             RegistryCommand::Add {
                 service_name,
@@ -374,7 +378,11 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         //info!("~sm info string: {:#?}", info_string);
 
         // set the info buffer to the formatted info string
-        let _ = sm_scheme.write_response(info_string.as_bytes());
+        let msg = TOMLMessage::String(info_string);
+        let _ = sm_scheme.write_response(
+            toml::to_string(&msg)
+                .unwrap_or_else(|_| String::from(""))
+            .as_bytes());
     } else {
         let info_string = format!(
             "\nService: {} is STOPPED\n\
@@ -395,37 +403,58 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
             service.message
         );
         // set the info buffer to the formatted info string
-        let _ = sm_scheme.write_response(info_string.as_bytes());
-        //sm_scheme.cmd = None;
+        let msg = TOMLMessage::String(info_string);
+        let _ = sm_scheme.write_response(
+            toml::to_string(&msg)
+                .unwrap_or_else(|_| String::from(""))
+            .as_bytes());
     }
 }
 
 fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
-    let mut end_string: String = "Name | PID | Uptime | Message | Status\n".to_string();
+    let mut service_stats: Vec<ServiceRuntimeStats> = Vec::new();
+    // let mut end_string = String::new();
+    // let mut end_string: String = "Name | PID | Uptime | Message | Status\n".to_string();
 
     //let mut listString = "";
     //hashmap_bytes(services, sm_scheme);
     for service in service_map.values_mut() {
-        //let service = services.get_mut(&sm_scheme.arg1)
         if service.running {
             update_service_info(service);
-            // set up time strings
-            let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
-
-            let list_string = format!(
-                "{} | {} | {} | {} | Running\n",
-                service.config.name, service.pid, uptime_string, service.message
-            );
-            info!("line: {}", list_string);
-            end_string.push_str(&list_string);
-            info!("End: {}", end_string);
-        } else {
-            let stopped_string = format!("{} | none | none | none | not running\n", service.config.name);
-            end_string.push_str(&stopped_string);
         }
+
+        service_stats.push(ServiceRuntimeStats {
+            name: service.config.name.clone(),
+            pid: service.pid,
+            time_init: service.time_init,
+            time_started: service.time_started,
+            time_now: Local::now().timestamp_millis(),
+            message: service.message.clone(),
+            running: service.running,
+        });
+        // if service.running {
+        //     update_service_info(service);
+        //     // set up time strings
+        //     let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
+
+        //     let list_string = format!(
+        //         "{} | {} | {} | {} | Running\n",
+        //         service.config.name, service.pid, uptime_string, service.message
+        //     );
+        //     info!("line: {}", list_string);
+        //     end_string.push_str(&list_string);
+        //     info!("End: {}", end_string);
+        // } else {
+        //     let stopped_string = format!("{} | none | none | none | not running\n", service.config.name);
+        //     end_string.push_str(&stopped_string);
+        // }
     }
 
-    let _ = sm_scheme.write_response(end_string.as_bytes());
+    let msg = TOMLMessage::ServiceStats(service_stats);
+    let _ = sm_scheme.write_response(
+        toml::to_string(&msg)
+            .unwrap_or_else(|_| String::from(""))
+        .as_bytes());
 }
 
 // function that takes a time difference and returns a string of the time in hours, minutes, and seconds
