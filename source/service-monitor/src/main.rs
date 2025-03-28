@@ -23,14 +23,6 @@ use registry::{
     view_entry, ServiceEntry,
 };
 
-// todo: remove (unused)
-enum GenericData {
-    Byte(u8),
-    Short(u16),
-    Int(u32),
-    Text(String),
-}
-
 fn main() {
     let _ = RedoxLogger::new()
         .with_output(
@@ -771,18 +763,4 @@ fn recover(service: &mut ServiceEntry) -> bool {
         }
     };
     running
-}
-
-// todo: remove (unused)
-fn extract_bytes(data_vec: &Vec<GenericData>) -> Vec<u8> {
-    data_vec
-        .iter()
-        .filter_map(|d| {
-            if let GenericData::Byte(b) = d {
-                Some(*b)
-            } else {
-                None
-            }
-        })
-        .collect()
 }
