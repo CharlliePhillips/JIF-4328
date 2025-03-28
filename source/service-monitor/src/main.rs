@@ -382,7 +382,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         //info!("~sm info string: {:#?}", info_string);
 
         // set the info buffer to the formatted info string
-        sm_scheme.write_response(info_string.as_bytes());
+        let _ = sm_scheme.write_response(info_string.as_bytes());
     } else {
         let info_string = format!(
             "\nService: {} is STOPPED\n\
