@@ -89,31 +89,7 @@ fn validate_args(s: &str) -> Result<Vec<String>, String> {
     return Ok(vec.args);    
 }
 
-
-impl RegistryCommand {
-    pub fn name(&self) -> String {
-        match self {
-            RegistryCommand::Add{..} => String::from("add"),
-            RegistryCommand::Remove{..} => String::from("remove"),
-            RegistryCommand::View{..} => String::from("view"),
-            RegistryCommand::Edit{..} => String::from("edit"),
-        }
-    }
-}
-
 impl SMCommand {
-    /// Returns the lowercase name of the command as a String
-    pub fn name(&self) -> String {
-        match self {
-            SMCommand::Stop{..} => String::from("stop"),
-            SMCommand::Start{..} => String::from("start"),
-            SMCommand::List => String::from("list"),
-            SMCommand::Info{..} => String::from("info"),
-            SMCommand::Clear{..} => String::from("clear"),
-            SMCommand::Registry{..} => String::from("registry"),
-        }
-    }
-
     pub fn encode(&self) -> Result<Vec<u8>, String> {
         toml::to_string(self)
             .map(|s| s.into_bytes())
