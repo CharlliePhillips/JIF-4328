@@ -1,11 +1,12 @@
 [build]
 template = "custom"
 script = """
-cookbook_cargo_packages service-monitor services gtrand gtrand2
+cookbook_cargo_packages service-monitor services services-gui gtrand gtrand2
 
 # rename the executable binaries
 mv "${COOKBOOK_STAGE}"/usr/bin/service-monitor_service-monitor "${COOKBOOK_STAGE}"/usr/bin/service-monitor
 mv "${COOKBOOK_STAGE}"/usr/bin/service-monitor_services "${COOKBOOK_STAGE}"/usr/bin/services
+mv "${COOKBOOK_STAGE}"/usr/bin/service-monitor_services-gui "${COOKBOOK_STAGE}"/usr/bin/services-gui
 mv "${COOKBOOK_STAGE}"/usr/bin/service-monitor_gtrand "${COOKBOOK_STAGE}"/usr/bin/gtrand
 mv "${COOKBOOK_STAGE}"/usr/bin/service-monitor_gtrand2 "${COOKBOOK_STAGE}"/usr/bin/gtrand2
 

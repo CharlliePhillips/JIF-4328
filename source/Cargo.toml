@@ -1,7 +1,9 @@
 [workspace]
+workspace.resolver = "3"
 members = [
     "service-monitor",
     "services",
+    "services-gui",
     "service-base",
     "gtrand",
     "gtrand2",
