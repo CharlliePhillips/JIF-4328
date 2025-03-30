@@ -177,16 +177,16 @@ pub fn rm_entry(name: &str) {
         services.remove(name);
         write_registry(services);
     } else {
-        println!("Service not found in registry");
+        //println!("Service not found in registry");
     }
 }
 
 pub fn edit_entry(
     name: &str,
-    o: bool,
+    old: bool,
     edit_args: &Vec<String>,
     scheme_path: &str,
-    dependencies: &Vec<String>,
+    depends: &Vec<String>,
 ) {
     let mut services = read_registry();
     if let Some(entry) = services.get_mut(name) {
@@ -194,7 +194,7 @@ pub fn edit_entry(
             warn!("Service is currently running");
         }
 
-        if o {
+        if old {
             entry.config.r#type = "unmanaged".to_string();
         }
 
@@ -208,7 +208,7 @@ pub fn edit_entry(
             entry.config.scheme_path = format!("/scheme/{}", name);
         }
 
-        for dep in dependencies {
+        for dep in depends {
             if !entry.config.depends.contains(dep) {
                 entry.config.depends.push(dep.clone());
             }
@@ -216,21 +216,22 @@ pub fn edit_entry(
 
         write_registry(services);
     } else {
-        println!("Service not found in registry\nRegistry edit failed");
+        //println!("Service not found in registry\nRegistry edit failed");
     }
 }
 
 pub fn edit_hash_entry(
     services: &mut HashMap<String, ServiceEntry>,
     name: &str,
-    o: bool,
+    old: bool,
     edit_args: &Vec<String>,
     scheme_path: &str,
     depends: &Vec<String>,
 ) {
     if services.contains_key(name) {
         let entry = services.get_mut(name).unwrap();
-        if o {
+
+        if old {
             entry.config.r#type = "unmanaged".to_string();
         }
         if !edit_args.is_empty() {
@@ -273,25 +274,25 @@ pub fn edit_hash_entry(
 
         services.insert(name.to_string(), new_entry);
     } else {
-        println!("Unable to edit Service Entry that is not present in internal list");
+        //println!("Unable to edit Service Entry that is not present in internal list");
     }
 }
 
 pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: &str) {
     let services_toml = read_registry();
     if let Some(_entry) = services_toml.get(name) {
-        println!("Service is still present in registry, unable to remove from internal list");
+        //println!("Service is still present in registry, unable to remove from internal list");
     } else {
         if services.contains_key(name) {
             let entry = services.get(name).unwrap();
             if entry.running {
-                println!("Cannot remove an entry that is currently running");
+                //println!("Cannot remove an entry that is currently running");
             } else {
                 services.remove(name);
-                println!("Removing service from internal list");
+                //println!("Removing service from internal list");
             }
         } else {
-            println!("Cannot find entry in internal list to remove");
+            //println!("Cannot find entry in internal list to remove");
         }
     }
 }
@@ -306,7 +307,7 @@ pub fn add_hash_entry(
     services: &mut HashMap<String, ServiceEntry>,
 ) {
     if services.contains_key(name) {
-        println!("Cannot add entry that is already present in internal list");
+        //println!("Cannot add entry that is already present in internal list");
     } else {
         let new_entry = ServiceEntry {
             config: Service {

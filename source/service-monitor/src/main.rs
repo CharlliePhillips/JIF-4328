@@ -99,7 +99,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     match &sm_scheme.cmd {
         Some(SMCommand::Stop { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                info!("Stopping '{}'", service.config.name);
+                // info!("Stopping '{}'", service.config.name);
                 stop(service, sm_scheme);
             } else {
                 warn!("stop failed: no service named '{}'", service_name);
@@ -107,7 +107,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         }
         Some(SMCommand::Start { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                info!("Starting '{}'", service.config.name);
+                //info!("Starting '{}'", service.config.name);
                 start(service);
             } else {
                 warn!("start failed: no service named '{}'", service_name);
@@ -116,13 +116,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         Some(SMCommand::List) => list(services, sm_scheme),
         Some(SMCommand::Clear { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                info!("Clearing short-term stats for '{}'", service.config.name);
+                //info!("Clearing short-term stats for '{}'", service.config.name);
                 clear(service);
             }
         }
         Some(SMCommand::Info { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                info!("Finding information for '{}'", service.config.name);
+                //info!("Finding information for '{}'", service.config.name);
                 info(service, sm_scheme);
             } else {
                 warn!("info failed: no service named '{}'", service_name);
@@ -164,11 +164,11 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     services,
                 );
                 if services.contains_key(service_name) {
-                    println!("key found!");
+                    //println!("key found!");
                     let entry = services.get(service_name).unwrap();
-                    println!("{}", entry.config.scheme_path);
+                    //println!("{}", entry.config.scheme_path);
                 } else {
-                    println!("key not found!");
+                    //println!("key not found!");
                 }
             }
             RegistryCommand::Remove { service_name } => {
@@ -177,25 +177,25 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             }
             RegistryCommand::Edit {
                 service_name,
-                o,
+                old,
                 edit_args,
                 scheme_path,
-                dependencies,
+                depends,
             } => {
                 edit_entry(
                     service_name,
-                    *o,
+                    *old,
                     edit_args.as_ref().unwrap(),
                     scheme_path,
-                    dependencies.as_ref().unwrap(),
+                    depends.as_ref().unwrap(),
                 );
                 edit_hash_entry(
                     services,
                     service_name,
-                    *o,
+                    *old,
                     edit_args.as_ref().unwrap(),
                     scheme_path,
-                    dependencies.as_ref().unwrap(),
+                    depends.as_ref().unwrap(),
                 );
             }
         },
@@ -206,7 +206,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
 }
 
 fn update_service_info(service: &mut ServiceEntry) {
-    info!("Updating information for: {}", service.config.name);
+    //info!("Updating information for: {}", service.config.name);
 
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
 
@@ -329,10 +329,10 @@ fn start(service: &mut ServiceEntry) {
         // When we actually report the total number of reads/writes, it should actually be the total added
         // to whatever the current value in the service is, the toal stored in the service monitor is
         // updated when the service's count is cleared.
-        info!(
-            "total reads: {}, total writes: {}",
-            service.total_reads, service.total_writes
-        );
+        // info!(
+        //     "total reads: {}, total writes: {}",
+        //     service.total_reads, service.total_writes
+        // );
     }
 }
 
@@ -343,14 +343,14 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         // set up time strings
         let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
         let time_init_string = time_string(service.time_started, service.time_init);
-        info!(
-            "~sm time started registered versus time initialized: {}, {}",
-            service.time_started, service.time_init
-        );
+        // info!(
+        //     "~sm time started registered versus time initialized: {}, {}",
+        //     service.time_started, service.time_init
+        // );
 
         // set up the info string
         let info_string = format!(
-            "\nService: {} \nUptime: {} \nLast time to initialize: {} \n\
+            "Service: {} \nUptime: {} \nLast time to initialize: {} \n\
                 Live READ count: {}, Total: {} \n\
                 Live WRITE count: {}, Total: {}\n\
                 Live OPEN count: {}, Total: {} \n\
@@ -385,7 +385,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
             .as_bytes());
     } else {
         let info_string = format!(
-            "\nService: {} is STOPPED\n\
+            "Service: {} is STOPPED\n\
             Total READ count: {}\n\
             Total WRITE count: {}\n\
             Total OPEN count: {}\n\
