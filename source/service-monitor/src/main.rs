@@ -40,7 +40,7 @@ fn main() {
 
     // start dependencies
     for service in services.values_mut() {
-        start(service);
+        start(service, None);
     }
 
     redox_daemon::Daemon::new(move |daemon| {
@@ -88,29 +88,35 @@ fn main() {
     .expect("service-monitor: failed to daemonize");
 }
 
-// todo: automatically reset sm_scheme.cmd without having to do it in every branch condition
-// todo: figure out how to unify resets to sm_scheme.cmd (currently split btwn here and services/main.rs)
 /// Checks if the service-monitor's command value has been changed and performs the appropriate action.
-/// Currently supports the following commands:
-/// - stop: check if service is running, if it is then get pid and stop
-/// - start: check if service is running, if not build command from registry and start
-/// - list: get all pids from managed services and return them to CLI
 fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
-    match &sm_scheme.cmd {
+    match &(sm_scheme.cmd) {
         Some(SMCommand::Stop { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 // info!("Stopping '{}'", service.config.name);
                 stop(service, sm_scheme);
             } else {
-                warn!("stop failed: no service named '{}'", service_name);
+                let name = service_name.clone();
+                let msg = TOMLMessage::String(format!("Unable to stop '{}': No such service", name));
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                    .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
+                warn!("stop failed: no service named '{}'", name);
             }
         }
         Some(SMCommand::Start { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 //info!("Starting '{}'", service.config.name);
-                start(service);
+                start(service, Some(sm_scheme));
             } else {
-                warn!("start failed: no service named '{}'", service_name);
+                let name = service_name.clone();
+                let msg = TOMLMessage::String(format!("Unable to start '{}': No such service", name));
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                    .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
+                warn!("start failed: no service named '{}'", name);
             }
         }
         Some(SMCommand::List) => list(services, sm_scheme),
@@ -118,6 +124,14 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             if let Some(service) = services.get_mut(service_name) {
                 //info!("Clearing short-term stats for '{}'", service.config.name);
                 clear(service);
+            } else {
+                let name = service_name.clone();
+                let msg = TOMLMessage::String(format!("Unable to clear '{}': No such service", name));
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                    .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
+                warn!("clear failed: no service named '{}'", name);
             }
         }
         Some(SMCommand::Info { service_name }) => {
@@ -125,7 +139,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 //info!("Finding information for '{}'", service.config.name);
                 info(service, sm_scheme);
             } else {
-                warn!("info failed: no service named '{}'", service_name);
+                let name = service_name.clone();
+                let msg = TOMLMessage::String(format!("Unable to get info for '{}': No such service", name));
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                    .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
+                warn!("info failed: no service named '{}'", name);
             }
         }
         Some(SMCommand::Registry { subcommand }) => match subcommand {
@@ -262,11 +282,16 @@ fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         let _kill_ret = syscall::call::kill(service.pid, syscall::SIGKILL);
         service.running = false;
     } else {
-        warn!("stop failed: {} was already stopped", service.config.name);
+        let msg = TOMLMessage::String(format!("Unable to stop '{}': Already stopped", service.config.name));
+        let _ = sm_scheme.write_response(
+            toml::to_string(&msg)
+            .unwrap_or_else(|_| String::from(""))
+            .as_bytes());
+        warn!("stop failed: '{}' was already stopped", service.config.name);
     }
 }
 
-fn start(service: &mut ServiceEntry) {
+fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
     // can add args here later with '.arg()'
     if !service.running {
         match std::process::Command::new(service.config.name.as_str()).spawn() {
@@ -321,6 +346,13 @@ fn start(service: &mut ServiceEntry) {
             }
         };
     } else {
+        if let Some(sm_scheme) = sm_scheme {
+            let msg = TOMLMessage::String(format!("Unable to start '{}': Already running", service.config.name));
+            let _ = sm_scheme.write_response(
+                toml::to_string(&msg)
+                .unwrap_or_else(|_| String::from(""))
+                .as_bytes());
+        }
         warn!("service: '{}' is already running", service.config.name);
         //test_service_data(service);
         if &service.config.name == "gtrand2" {

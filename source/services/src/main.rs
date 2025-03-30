@@ -1,5 +1,5 @@
 use clap::Parser;
-use shared::{SMCommand, ServiceRuntimeStats, TOMLMessage};
+use shared::{SMCommand, TOMLMessage};
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
@@ -14,7 +14,6 @@ struct Cli {
     cmd: SMCommand,
 }
 
-// todo: report back if service-name is invalid in start, stop commands
 fn main() {
     let cli = Cli::parse();
 
