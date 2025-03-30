@@ -112,10 +112,7 @@ fn validate_args(s: &str) -> Result<Vec<String>, String> {
 impl SMCommand {
     pub fn encode(&self) -> Result<Vec<u8>, String> {
         toml::to_string(self)
-            .map(|s| {
-                println!("TOML:\n{s}");
-                s.into_bytes()
-            })
+            .map(|s| { s.into_bytes() })
             .map_err(|e| format!("Failed to encode SMCommand into string: {}", e))
     }
 
