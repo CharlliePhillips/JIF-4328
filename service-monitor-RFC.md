@@ -136,8 +136,10 @@ A separate program with the name “services” will parse the arguments passed 
     - Restart and Restore: 
         - Adding the `-restart` argument stops a registered service and then starts it. Long term data from a managed daemon scheme should be recorded. Some services require information from the kernel to be started in the correct state after Redox has booted. For these services use the argument `–restore`. Ex: `services stop –restore <daemon_name>`
 
+6. **services** / **services --help**
+    - Displays a help page detailing the available commands for the service monitor
 
-6. **services registry view <daemon_name>**
+7. **services registry view <daemon_name>**
     - lists the `registry.toml` entry for the specified service, or indicates that the service has no entry. - The info is returned in the service-entry format (see the section Service Registry -> Format below for more details): 
         ```toml
         [[service]]
@@ -150,14 +152,14 @@ A separate program with the name “services” will parse the arguments passed 
         ```
 
     - this only includes the info specified in `registry.toml`, not the short-term info that is included in `services info <daemon_name>`
-7. **services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>**
+8. **services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>**
     - `--old` | optional flag to indicate an old-style service. If set, the `r#type` will be set to "unmanaged". Otherwise, `r#type` is set to "daemon". An unmanaged service will be started by the service-monitor, but then released (and not managed).
     - `--override` | optional flag to for the `manual_override` component in smregistry.toml. If set, `manual_override` is set to true. Otherwise, `manual_override` is set to false.
     - If there are no args and/or dependencies for the service being passed, "[]" should be specified for part of the command.
-8. **services registry remove <daemon_name>**
+9. **services registry remove <daemon_name>**
    - removes the `registry.toml` entry for the specified service if it exists. If it does not exist, this command will not remove anything. This will not affect the instance of the service that is currently running, only the entry in `registry.toml`
-9. **services** / **services --help**
-    - Displays a help page detailing the available commands 
+10. **services registry** / **services registry --help**
+    - Displays a help page detailing the available commands for changing and viewing the registry.
 
 ## APIs and Message Flows 
 #### Managed Service API (new-style daemons)

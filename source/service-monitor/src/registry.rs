@@ -198,10 +198,10 @@ pub fn rm_entry(name: &str) {
 
 pub fn edit_entry(
     name: &str,
-    o: bool,
+    old: bool,
     edit_args: &Vec<String>,
     scheme_path: &str,
-    dependencies: &Vec<String>,
+    depends: &Vec<String>,
 ) {
     let mut services = read_registry();
     if let Some(entry) = services.get_mut(name) {
@@ -209,7 +209,7 @@ pub fn edit_entry(
             warn!("Service is currently running");
         }
 
-        if o {
+        if old {
             entry.r#type = "unmanaged".to_string();
         }
 
@@ -223,7 +223,7 @@ pub fn edit_entry(
             entry.scheme_path = format!("/scheme/{}", name);
         }
 
-        for dep in dependencies {
+        for dep in depends {
             if !entry.depends.contains(dep) {
                 entry.depends.push(dep.clone());
             }
@@ -238,14 +238,14 @@ pub fn edit_entry(
 pub fn edit_hash_entry(
     services: &mut HashMap<String, ServiceEntry>,
     name: &str,
-    o: bool,
+    old: bool,
     edit_args: &Vec<String>,
     scheme_path: &str,
     depends: &Vec<String>,
 ) {
     if services.contains_key(name) {
         let entry = services.get_mut(name).unwrap();
-        if o {
+        if old {
             entry.r#type = "unmanaged".to_string();
         }
         if !edit_args.is_empty() {

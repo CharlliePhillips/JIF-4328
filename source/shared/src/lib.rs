@@ -5,19 +5,29 @@ use bincode::{Decode, Encode};
 /// Command enum used by the services command line
 #[derive(Subcommand, Encode, Decode)]
 pub enum SMCommand {
+    #[command(about = "Start a service")]
     Start {
+        #[arg(help = "The name of the service")]
         service_name: String,
     },
+    #[command(about = "Stop a service")]
     Stop {
+        #[arg(help = "The name of the service")]
         service_name: String,
     },
+    #[command(about = "List all services and their respective statuses")]
     List,
+    #[command(about = "Clear short-term stats for a service")]
     Clear {
+        #[arg(help = "The name of the service")]
         service_name: String,
     },
+    #[command(about = "Get info about a service")]
     Info {
+        #[arg(help = "The name of the service")]
         service_name: String,
     },
+    #[command(about = "Change and view the registry. Try 'services registry --help' for more information")]
     Registry {
         #[command(subcommand)]
         subcommand: RegistryCommand,
@@ -26,44 +36,54 @@ pub enum SMCommand {
 
 #[derive(Subcommand, Encode, Decode)]
 pub enum RegistryCommand {
+    #[command(about = "Add a service to the registry")]
     Add {
-        #[arg(long)]
+        #[arg(long, help = "If present, indicates that the service is an old-style daemon")]
         old: bool,
         
-        service_name: String, //required
-
-        // we don't need r#type, we can just use the old flag or default to "daemon".
+        #[arg(help = "The name of the service")]
+        service_name: String,
         
         #[arg(value_name = "start_args", help = "Arguments for starting the daemon", value_parser = validate_args)]
-        args: Option<::std::vec::Vec<String>>, //mandatory
+        args: Option<::std::vec::Vec<String>>,
 
-        #[arg(long = "override", help = "if not present, the service monitor may override the fields in the registry")]
+        #[arg(long = "override", help = "If present, the service monitor will not override the fields in the registry")]
         manual_override: bool, //this will default to false, if --override, it will be true 
         
-        #[arg(value_name = "depends", help = "a list of dependencies for the daemon", value_parser = validate_args)]
-        depends: Option<::std::vec::Vec<String>>, //mandatory
+        #[arg(value_name = "depends", help = "A list of dependencies for the daemon", value_parser = validate_args)]
+        depends: Option<::std::vec::Vec<String>>,
         
-        scheme_path: String, //mandatory
+        #[arg(help = "The path to the scheme file")]
+        scheme_path: String,
     },
+    #[command(about = "Remove a service's entry from the registry")]
     Remove {
+        #[arg(help = "The name of the service")]
         service_name: String,
     },
+    #[command(about = "Print a service's entry in the registry")]
     View {
+        #[arg(help = "The name of the service")]
         service_name: String,
     },
+    #[command(about = "Edit a service's entry in the registry")]
     Edit {
+        #[arg(long, help = "If present, indicates that the service is an old-style daemon")]
+        old: bool,
+
+        #[arg(help = "The name of the service")]
         service_name: String,
         
-        #[arg(long = "o", help = "-o for old-style daemon")]
-        o: bool,
-        
-        #[arg(value_name = "edit_args", help = "Arguments for the daemon", value_parser = validate_args)]
+        #[arg(value_name = "edit_args", help = "Arguments for starting the daemon", value_parser = validate_args)]
         edit_args: Option<::std::vec::Vec<String>>,
         
+        #[arg(value_name = "depends", help = "A list of dependencies for the daemon", value_parser = validate_args)]
+        depends: Option<::std::vec::Vec<String>>,
+
+        #[arg(help = "The path to the scheme file")]
         scheme_path: String,
         
-        #[arg(value_name = "dependencies", help = "A list of dependencies for the daemon", value_parser = validate_args)]
-        dependencies: Option<::std::vec::Vec<String>>,
+        
     }
 }
 

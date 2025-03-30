@@ -197,25 +197,25 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             }
             RegistryCommand::Edit {
                 service_name,
-                o,
+                old,
                 edit_args,
                 scheme_path,
-                dependencies,
+                depends,
             } => {
                 edit_entry(
                     service_name,
-                    *o,
+                    *old,
                     edit_args.as_ref().unwrap(),
                     scheme_path,
-                    dependencies.as_ref().unwrap(),
+                    depends.as_ref().unwrap(),
                 );
                 edit_hash_entry(
                     services,
                     service_name,
-                    *o,
+                    *old,
                     edit_args.as_ref().unwrap(),
                     scheme_path,
-                    dependencies.as_ref().unwrap(),
+                    depends.as_ref().unwrap(),
                 );
                 sm_scheme.cmd = None;
             }
