@@ -192,7 +192,7 @@ pub fn rm_entry(name: &str) {
         services.remove(name);
         write_registry(services);
     } else {
-        println!("Service not found in registry");
+        //println!("Service not found in registry");
     }
 }
 
@@ -231,7 +231,7 @@ pub fn edit_entry(
 
         write_registry(services);
     } else {
-        println!("Service not found in registry\nRegistry edit failed");
+        //println!("Service not found in registry\nRegistry edit failed");
     }
 }
 
@@ -292,25 +292,25 @@ pub fn edit_hash_entry(
 
         services.insert(name.to_string(), new_entry);
     } else {
-        println!("Unable to edit Service Entry that is not present in internal list");
+        //println!("Unable to edit Service Entry that is not present in internal list");
     }
 }
 
 pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: &str) {
     let services_toml = read_registry();
     if let Some(_entry) = services_toml.get(name) {
-        println!("Service is still present in registry, unable to remove from internal list");
+        //println!("Service is still present in registry, unable to remove from internal list");
     } else {
         if services.contains_key(name) {
             let entry = services.get(name).unwrap();
             if entry.running {
-                println!("Cannot remove an entry that is currently running");
+                //println!("Cannot remove an entry that is currently running");
             } else {
                 services.remove(name);
-                println!("Removing service from internal list");
+                //println!("Removing service from internal list");
             }
         } else {
-            println!("Cannot find entry in internal list to remove");
+            //println!("Cannot find entry in internal list to remove");
         }
     }
 }
@@ -325,7 +325,7 @@ pub fn add_hash_entry(
     services: &mut HashMap<String, ServiceEntry>,
 ) {
     if services.contains_key(name) {
-        println!("Cannot add entry that is already present in internal list");
+        //println!("Cannot add entry that is already present in internal list");
     } else {
         let new_entry = ServiceEntry {
             name: name.to_string(),
