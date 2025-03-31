@@ -237,9 +237,21 @@ impl cosmic::Application for App {
 
     /// Creates a view after each update.
     fn view(&self) -> Element<Self::Message, Theme, Renderer> {
+        // by default start & stop buttons do nothing
+        let mut start_msg = Message::NoOp;
+        let mut stop_msg = Message::NoOp;
+        match self.table_model.item(self.table_model.active()) {
+            Some(selected) => {
+                // if some item is selected then start and stop should operate on that
+                start_msg = Message::Start(selected.name.clone());
+                stop_msg = Message::Stop(selected.name.clone());
+            },
+            None => {}
+        }
+                
         let button_row = row![
-            cosmic::widget::button::text("Start").on_press(Message::Start(self.selected.clone().expect("None"))),
-            cosmic::widget::button::text("Stop").on_press(Message::Stop(self.selected.clone().expect("None"))),
+            cosmic::widget::button::text("Start").on_press(start_msg),
+            cosmic::widget::button::text("Stop").on_press(stop_msg),
             cosmic::widget::button::text("Refresh").on_press(Message::Refresh),
         ]
         .spacing(cosmic::theme::spacing().space_s)
