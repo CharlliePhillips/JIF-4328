@@ -82,17 +82,20 @@ impl table::ItemInterface<Category> for Item {
                 if self.pid == 0 {
                     "".to_string().into()
                 } else {
-                    format!("   {}", self.pid.to_string()).into()
+                    format!("{:^11}", self.pid.to_string()).into()
                 }
             },
             Category::Uptime => {
                 if self.uptime.0 == self.uptime.1 && self.uptime.0 == 0 {
                     "".to_string().into()
                 } else {
-                    format_uptime(self.uptime.0, self.uptime.1).into()
+                    let uptime_str = format_uptime(self.uptime.0, self.uptime.1);
+                    format!("{:^25}", uptime_str).into()
                 }
             },
-            Category::Msg => self.msg.clone().into(),
+            Category::Msg => {
+                format!("{:^20}", self.msg.clone()).into()
+            },
         }
     }
 
@@ -188,11 +191,6 @@ impl cosmic::Application for App {
         match message {
             Message::ItemSelect(entity) => {
                 self.table_model.activate(entity);
-                /* if let Some(item) = self.table_model.get(entity) { //get not a method, need another way
-                    self.selected = Some(item.name.clone());
-                } else {
-                    self.selected = None;
-                } */
             }
             Message::CategorySelect(category) => {
                 let mut ascending = true;
@@ -218,8 +216,7 @@ impl cosmic::Application for App {
                     tracing_log::log::info!("Started {}", service_name);
                     get_services(&mut self.table_model);
                 }
-                //perform refresh automatically
-                get_services(&mut self.table_model);
+                get_services(&mut self.table_model); //perform refresh automatically
             }
             Message::Stop(service_name) => {
                 if let Ok(mut sm_fd) = OpenOptions::new()
@@ -230,8 +227,7 @@ impl cosmic::Application for App {
                     let _ = sm_fd.write(&cmd);
                     tracing_log::log::info!("Stopped {}", service_name);
                 }
-                //perform refresh automatically
-                get_services(&mut self.table_model);
+                get_services(&mut self.table_model); //perform refresh automatically
             }
             Message::NoOp => {}
         }
