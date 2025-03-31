@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 
 use bstr::ByteSlice;
 use cosmic::app::{Core, Settings, Task};
-use cosmic::iced::widget::column;
+use cosmic::iced::widget::{column, row};
 use cosmic::iced_core::{Element, Size};
 use cosmic::prelude::*;
 use cosmic::widget::table;
@@ -127,6 +127,8 @@ pub enum Message {
     CategorySelect(Category),
     PrintMsg(String),
     Refresh,
+    Start(String),
+    Stop(String),
     NoOp,
 }
 
@@ -134,6 +136,7 @@ pub enum Message {
 pub struct App {
     core: Core,
     table_model: table::SingleSelectModel<Item, Category>,
+    selected: Option<String>,
 }
 
 /// Implement [`cosmic::Application`] to integrate with COSMIC.
@@ -173,7 +176,7 @@ impl cosmic::Application for App {
 
         get_services(&mut table_model);
 
-        let app = App { core, table_model };
+        let app = App { core, table_model, selected: None, };
 
         let command = Task::none();
 
@@ -183,7 +186,14 @@ impl cosmic::Application for App {
     /// Handle application events here.
     fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
         match message {
-            Message::ItemSelect(entity) => self.table_model.activate(entity),
+            Message::ItemSelect(entity) => {
+                /* self.table_model.activate(entity);
+                if let Some(item) = self.table_model.get(entity) { //get not a method, need another way
+                    self.selected = Some(item.name.clone());
+                } else {
+                    self.selected = None;
+                } */
+            }
             Message::CategorySelect(category) => {
                 let mut ascending = true;
                 if let Some(old_sort) = self.table_model.get_sort() {
@@ -196,6 +206,29 @@ impl cosmic::Application for App {
             Message::PrintMsg(string) => tracing_log::log::info!("{}", string),
             Message::Refresh => {
                 get_services(&mut self.table_model);
+                self.selected = None;
+            }
+            Message::Start(service_name) => {
+                if let Ok(mut sm_fd) = OpenOptions::new()
+                    .write(true)
+                    .open("/scheme/service-monitor")
+                {
+                    let cmd = SMCommand::Start { service_name: service_name.clone() }.encode().unwrap();
+                    let _ = sm_fd.write(&cmd);
+                    tracing_log::log::info!("Started {}", service_name);
+                }
+                //perform refresh automatically
+            }
+            Message::Stop(service_name) => {
+                if let Ok(mut sm_fd) = OpenOptions::new()
+                    .write(true)
+                    .open("/scheme/service-monitor")
+                {
+                    let cmd = SMCommand::Stop { service_name: service_name.clone() }.encode().unwrap();
+                    let _ = sm_fd.write(&cmd);
+                    tracing_log::log::info!("Stopped {}", service_name);
+                }
+                //perform refresh automatically
             }
             Message::NoOp => {}
         }
@@ -204,9 +237,17 @@ impl cosmic::Application for App {
 
     /// Creates a view after each update.
     fn view(&self) -> Element<Self::Message, Theme, Renderer> {
+        let button_row = row![
+            cosmic::widget::button::text("Start").on_press(Message::Start(self.selected.clone().expect("None"))),
+            cosmic::widget::button::text("Stop").on_press(Message::Stop(self.selected.clone().expect("None"))),
+            cosmic::widget::button::text("Refresh").on_press(Message::Refresh),
+        ]
+        .spacing(cosmic::theme::spacing().space_s)
+        .align_y(iced::Alignment::Center);
+    
         let centered = cosmic::widget::container(
             column![
-                cosmic::widget::button::text("Refresh").on_press(Message::Refresh),
+                button_row,
                 cosmic::widget::responsive(|size| {
                     if size.width < 600.0 {
                         widget::compact_table(&self.table_model)
