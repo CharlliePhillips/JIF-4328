@@ -187,8 +187,8 @@ impl cosmic::Application for App {
     fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
         match message {
             Message::ItemSelect(entity) => {
-                /* self.table_model.activate(entity);
-                if let Some(item) = self.table_model.get(entity) { //get not a method, need another way
+                self.table_model.activate(entity);
+                /* if let Some(item) = self.table_model.get(entity) { //get not a method, need another way
                     self.selected = Some(item.name.clone());
                 } else {
                     self.selected = None;
