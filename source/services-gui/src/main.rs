@@ -216,8 +216,10 @@ impl cosmic::Application for App {
                     let cmd = SMCommand::Start { service_name: service_name.clone() }.encode().unwrap();
                     let _ = sm_fd.write(&cmd);
                     tracing_log::log::info!("Started {}", service_name);
+                    get_services(&mut self.table_model);
                 }
                 //perform refresh automatically
+                get_services(&mut self.table_model);
             }
             Message::Stop(service_name) => {
                 if let Ok(mut sm_fd) = OpenOptions::new()
@@ -229,6 +231,7 @@ impl cosmic::Application for App {
                     tracing_log::log::info!("Stopped {}", service_name);
                 }
                 //perform refresh automatically
+                get_services(&mut self.table_model);
             }
             Message::NoOp => {}
         }
@@ -352,7 +355,7 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
         TOMLMessage::String(_str) => {}
         TOMLMessage::ServiceStats(stats) => {
             for s in stats {
-                if (s.running) {
+                if s.running {
                     let _ = table_model.insert(Item {
                         name: s.name.clone(),
                         pid: s.pid,

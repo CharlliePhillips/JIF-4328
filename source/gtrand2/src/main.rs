@@ -288,7 +288,6 @@ impl Scheme for RandScheme {
         while self.timeout {
             // infanite loop to test timeout.
             self.timeout = true;
-            println!("gtrand2 timing out");
         }
 
         if self.error {
@@ -303,7 +302,6 @@ impl Scheme for RandScheme {
         while self.timeout {
             // infanite loop to test timeout.
             self.timeout = true;
-            println!("gtrand2 timing out");
         }
 
         // Check fd and permissions
