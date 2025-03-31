@@ -45,6 +45,7 @@ home = "=0.5.9"
 chrono = "*"
 shared = { version = "0.1.0", path = "../shared" }
 bstr = "1.11.3"
+toml = { version = "0.8.20", features = ["preserve_order"] }
 
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic.git"

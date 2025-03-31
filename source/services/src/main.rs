@@ -1,5 +1,5 @@
 use clap::Parser;
-use shared::{SMCommand, TOMLMessage};
+use shared::{SMCommand, TOMLMessage, get_response, format_uptime};
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
@@ -71,43 +71,4 @@ fn main() {
             }
         }
     }
-}
-
-fn get_response(sm_fd: &mut File) -> Vec<u8> {
-    let mut response = Vec::<u8>::new();
-    loop {
-        let mut buf = [0u8; 1024];
-        let size = File::read(sm_fd, &mut buf).expect("Failed to read PIDs from service monitor");
-        if size == 0 {
-            break;
-        }
-        response.extend_from_slice(&buf[..size]);
-    }
-    return response;
-}
-
-// function that takes a time difference and returns a string of the time in hours, minutes, and seconds
-fn format_uptime(start_time_ms: i64, end_time_ms: i64) -> String {
-    let start = Local.timestamp_millis_opt(start_time_ms).unwrap();
-    let end = Local.timestamp_millis_opt(end_time_ms).unwrap();
-
-    let duration = end.signed_duration_since(start);
-
-    let hours = duration.num_hours();
-    let minutes = duration.num_minutes() % 60;
-    let seconds = duration.num_seconds() % 60;
-    let millisecs = duration.num_milliseconds() % 1000;
-    let seconds_with_millis = format!("{:02}.{:03}", seconds, millisecs);
-
-    let mut parts = Vec::new();
-
-    if hours > 0 {
-        parts.push(format!("{} hours", hours));
-    }
-    if minutes > 0 {
-        parts.push(format!("{} minutes", minutes));
-    }
-    parts.push(format!("{} seconds", seconds_with_millis));
-
-    parts.join(", ")
 }

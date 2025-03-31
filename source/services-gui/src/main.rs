@@ -15,7 +15,7 @@ use cosmic::prelude::*;
 use cosmic::widget::table;
 use cosmic::widget::{self, nav_bar};
 use cosmic::{executor, iced};
-use shared::SMCommand;
+use shared::{format_uptime, get_response, SMCommand, TOMLMessage};
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Category {
@@ -50,8 +50,8 @@ impl table::ItemCategory for Category {
 
 struct Item {
     name: String,
-    pid: String,
-    uptime: String,
+    pid: usize,
+    uptime: (i64, i64),
     msg: String,
 }
 
@@ -78,8 +78,20 @@ impl table::ItemInterface<Category> for Item {
     fn get_text(&self, category: Category) -> std::borrow::Cow<'static, str> {
         match category {
             Category::Name => self.name.clone().into(),
-            Category::Pid => self.pid.to_string().into(),
-            Category::Uptime => self.uptime.clone().into(),
+            Category::Pid => {
+                if self.pid == 0 {
+                    "".to_string().into()
+                } else {
+                    format!("   {}", self.pid.to_string()).into()
+                }
+            },
+            Category::Uptime => {
+                if self.uptime.0 == self.uptime.1 && self.uptime.0 == 0 {
+                    "".to_string().into()
+                } else {
+                    format_uptime(self.uptime.0, self.uptime.1).into()
+                }
+            },
             Category::Msg => self.msg.clone().into(),
         }
     }
@@ -88,8 +100,8 @@ impl table::ItemInterface<Category> for Item {
         match category {
             Category::Name => self.name.to_lowercase().cmp(&other.name.to_lowercase()),
             Category::Pid => self.pid.cmp(&other.pid),
-            Category::Uptime => self.uptime.cmp(&other.uptime),
-            Category::Msg => self.msg.cmp(&other.msg),
+            Category::Uptime => (self.uptime.1 - self.uptime.0).cmp(&(other.uptime.1 - other.uptime.0)),
+            Category::Msg => self.msg.to_lowercase().cmp(&other.msg.to_lowercase()),
         }
     }
 }
@@ -159,56 +171,7 @@ impl cosmic::Application for App {
             Category::Msg,
         ]);
 
-        let list_cmd = SMCommand::List.encode().unwrap();
-
-        let Ok(sm_fd) = &mut OpenOptions::new()
-            .write(true)
-            .open("/scheme/service-monitor")
-        else {
-            panic!()
-        };
-        let _ = File::write(sm_fd, &list_cmd);
-
-        let mut response_buffer = vec![0u8; 1024]; // 1024 is kinda arbitrary here, may cause issues later
-        let size = File::read(sm_fd, &mut response_buffer)
-            .expect("Failed to read PIDs from service monitor");
-        response_buffer.truncate(size);
-
-        let mut lines: Vec<&[u8]> = response_buffer.lines().collect();
-        lines.swap_remove(0);
-        for line in lines {
-            let name_idx = line.iter().position(|c| *c == b'|').unwrap();
-            let pid_idx = name_idx
-                + 1
-                + line[name_idx + 1..]
-                    .iter()
-                    .position(|c| *c == b'|')
-                    .unwrap();
-            let uptime_idx =
-                pid_idx + 1 + line[pid_idx + 1..].iter().position(|c| *c == b'|').unwrap();
-            let msg_idx = uptime_idx
-                + 1
-                + line[uptime_idx + 1..]
-                    .iter()
-                    .position(|c| *c == b'|')
-                    .unwrap();
-
-            let _ = table_model.insert(Item {
-                name: line[0..name_idx].to_str().unwrap().to_string(),
-                pid: line[name_idx + 1..pid_idx - 1]
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                uptime: line[pid_idx + 1..uptime_idx - 1]
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                msg: line[uptime_idx + 1..msg_idx - 1]
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-            });
-        }
+        get_services(&mut table_model);
 
         let app = App { core, table_model };
 
@@ -326,42 +289,33 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
     };
     let _ = File::write(sm_fd, &list_cmd);
 
-    let mut response_buffer = vec![0u8; 1024]; // 1024 is kinda arbitrary here, may cause issues later
-    let size =
-        File::read(sm_fd, &mut response_buffer).expect("Failed to read PIDs from service monitor");
-    response_buffer.truncate(size);
+    let response_buffer = get_response(sm_fd);
+    let response_string = std::str::from_utf8(&response_buffer)
+        .expect("Error parsing response to UTF8")
+        .to_string();
+    let msg: TOMLMessage = toml::from_str(&response_string).expect("Error parsing UTF8 to TOMLMessage");
 
-    let mut lines: Vec<&[u8]> = response_buffer.lines().collect();
-    lines.swap_remove(0);
-    for line in lines {
-        let name_idx = line.iter().position(|c| *c == b'|').unwrap();
-        let pid_idx = name_idx + 1
-            + line[name_idx + 1..]
-                .iter()
-                .position(|c| *c == b'|')
-                .unwrap();
-        let uptime_idx = pid_idx + 1 + line[pid_idx + 1..].iter().position(|c| *c == b'|').unwrap();
-        let msg_idx = uptime_idx + 1
-            + line[uptime_idx + 1..]
-                .iter()
-                .position(|c| *c == b'|')
-                .unwrap();
-
-        let _ = table_model.insert(Item {
-            name: line[0..name_idx].to_str().unwrap().to_string(),
-            pid: line[name_idx + 1..pid_idx - 1]
-                .to_str()
-                .unwrap()
-                .to_string(),
-            uptime: line[pid_idx + 1..uptime_idx - 1]
-                .to_str()
-                .unwrap()
-                .to_string(),
-            msg: line[uptime_idx + 1..msg_idx - 1]
-                .to_str()
-                .unwrap()
-                .to_string(),
-        });
+    match &msg {
+        TOMLMessage::String(_str) => {}
+        TOMLMessage::ServiceStats(stats) => {
+            for s in stats {
+                if (s.running) {
+                    let _ = table_model.insert(Item {
+                        name: s.name.clone(),
+                        pid: s.pid,
+                        uptime: (s.time_init, s.time_now),
+                        msg: s.message.clone(),
+                    });
+                } else {
+                    let _ = table_model.insert(Item {
+                        name: s.name.clone(),
+                        pid: 0,
+                        uptime: (0,0),
+                        msg: "not running".to_string(),
+                    });
+                }
+            }
+        }
     }
 }
 
