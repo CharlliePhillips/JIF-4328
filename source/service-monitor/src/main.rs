@@ -516,33 +516,47 @@ fn time_string(start_time: i64, end_time: i64) -> String {
 }
 
 fn clear(service: &mut ServiceEntry) {
-    // read the requests into a buffer
-    let read_buffer: &mut [u8] = &mut [b'0'; 48];
-    let _ = read_helper(service, read_buffer, "request_count");
+    if (service.running) {
+        // read the requests into a buffer
+        let read_buffer: &mut [u8] = &mut [b'0'; 48];
+        let _ = read_helper(service, read_buffer, "request_count");
 
-    // turn that buffer into read/write as integers
-    let mut read_bytes: [u8; 8] = [0; 8];
-    let mut write_bytes: [u8; 8] = [0; 8];
-    let mut open_bytes: [u8; 8] = [0; 8];
-    let mut close_bytes: [u8; 8] = [0; 8];
-    let mut dup_bytes: [u8; 8] = [0; 8];
-    let mut error_bytes: [u8; 8] = [0; 8];
-    read_bytes.clone_from_slice(&read_buffer[0..8]);
-    write_bytes.clone_from_slice(&read_buffer[8..16]);
-    open_bytes.clone_from_slice(&read_buffer[16..24]);
-    close_bytes.clone_from_slice(&read_buffer[24..32]);
-    dup_bytes.clone_from_slice(&read_buffer[32..40]);
-    error_bytes.clone_from_slice(&read_buffer[40..48]);
-    // count this for our service's totals
-    service.total_reads += u64::from_ne_bytes(read_bytes);
-    service.total_writes += u64::from_ne_bytes(write_bytes);
-    service.total_opens += u64::from_ne_bytes(open_bytes);
-    service.total_closes += u64::from_ne_bytes(close_bytes);
-    service.total_dups += u64::from_ne_bytes(dup_bytes);
-    service.total_errors += u64::from_ne_bytes(error_bytes);
+        // turn that buffer into read/write as integers
+        let mut read_bytes: [u8; 8] = [0; 8];
+        let mut write_bytes: [u8; 8] = [0; 8];
+        let mut open_bytes: [u8; 8] = [0; 8];
+        let mut close_bytes: [u8; 8] = [0; 8];
+        let mut dup_bytes: [u8; 8] = [0; 8];
+        let mut error_bytes: [u8; 8] = [0; 8];
+        read_bytes.clone_from_slice(&read_buffer[0..8]);
+        write_bytes.clone_from_slice(&read_buffer[8..16]);
+        open_bytes.clone_from_slice(&read_buffer[16..24]);
+        close_bytes.clone_from_slice(&read_buffer[24..32]);
+        dup_bytes.clone_from_slice(&read_buffer[32..40]);
+        error_bytes.clone_from_slice(&read_buffer[40..48]);
+        // count this for our service's totals
+        service.total_reads += u64::from_ne_bytes(read_bytes);
+        service.total_writes += u64::from_ne_bytes(write_bytes);
+        service.total_opens += u64::from_ne_bytes(open_bytes);
+        service.total_closes += u64::from_ne_bytes(close_bytes);
+        service.total_dups += u64::from_ne_bytes(dup_bytes);
+        service.total_errors += u64::from_ne_bytes(error_bytes);
 
-    // clear the data and close the schemes.
-    let _ = write_helper(service, "control", "clear");
+        // clear the data and close the schemes.
+        let _ = write_helper(service, "control", "clear");
+        
+        service.read_count = 0;
+        service.write_count = 0;
+        service.open_count = 0;
+        service.close_count = 0;
+        service.dup_count = 0;
+        service.error_count = 0;
+
+        // TODO: write "clear successful" to output
+    } else {
+        // TODO: write "clear unsuccessful" to output
+        warn!("Attempted to clear '{}' which is not running!", service.config.name);
+    }
 }
 
 fn test_timeout(gtrand2: &mut ServiceEntry) {
@@ -697,7 +711,10 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
                 let write_thread = thread::spawn(move || {
                     let thread_buf: &mut [u8; 64] = &mut [0; 64];
                     thread_buf.clone_from_slice(&thread_data[0..thread_data.len()]);
-                    match sender.send(libredox::call::write(write_scheme, thread_buf)) {
+                    let mut thread_wr = thread_buf.to_vec();
+                    thread_wr.retain(|c| *c != b'\0');
+                    let wr: &[u8] = &thread_wr;
+                    match sender.send(libredox::call::write(write_scheme, wr)) {
                         Ok(_result) => {
                             return;
                         }

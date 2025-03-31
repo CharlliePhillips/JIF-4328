@@ -108,6 +108,14 @@ impl BaseScheme {
                 .map_err(|_err| Error::new(EBADF))?;
             let _ = requests_lock.write(0, b"clear", 0, 0);
 
+            let mut management_lock = self.management.lock().map_err(|_err| Error::new(EBADF))?;
+            management_lock.reads = 0;
+            management_lock.writes = 0;
+            management_lock.opens = 0;
+            management_lock.closes = 0;
+            management_lock.dups = 0;
+            management_lock.errors = 0;
+
             // clear the control scheme so we know not to update again
             let _ = control_lock.write(0, b"cleared", 0, 0);
             return Ok(1);
