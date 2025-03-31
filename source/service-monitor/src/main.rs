@@ -9,7 +9,7 @@ use log::{error, info, warn};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{RequestKind, SignalBehavior, Socket};
 use scheme::SMScheme;
-use shared::{RegistryCommand, SMCommand};
+use shared::{RegistryCommand, SMCommand, ServiceRuntimeStats, TOMLMessage};
 use std::{
     str,
     sync::mpsc,
@@ -22,14 +22,6 @@ use registry::{
     add_entry, add_hash_entry, edit_entry, edit_hash_entry, read_registry, rm_entry, rm_hash_entry,
     view_entry, ServiceEntry,
 };
-
-// todo: remove (unused)
-enum GenericData {
-    Byte(u8),
-    Short(u16),
-    Int(u32),
-    Text(String),
-}
 
 fn main() {
     let _ = RedoxLogger::new()
@@ -48,7 +40,7 @@ fn main() {
 
     // start dependencies
     for service in services.values_mut() {
-        start(service);
+        start(service, None);
     }
 
     redox_daemon::Daemon::new(move |daemon| {
@@ -56,10 +48,7 @@ fn main() {
         let socket =
             Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
-        let mut sm_scheme = SMScheme {
-            cmd: None,
-            response_buffer: Vec::new(),
-        };
+        let mut sm_scheme = SMScheme::new();
 
         info!(
             "service-monitor daemonized with pid: {}",
@@ -99,61 +88,74 @@ fn main() {
     .expect("service-monitor: failed to daemonize");
 }
 
-// todo: automatically reset sm_scheme.cmd without having to do it in every branch condition
-// todo: figure out how to unify resets to sm_scheme.cmd (currently split btwn here and services/main.rs)
 /// Checks if the service-monitor's command value has been changed and performs the appropriate action.
-/// Currently supports the following commands:
-/// - stop: check if service is running, if it is then get pid and stop
-/// - start: check if service is running, if not build command from registry and start
-/// - list: get all pids from managed services and return them to CLI
 fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
-    match &sm_scheme.cmd {
+    match &(sm_scheme.cmd) {
         Some(SMCommand::Stop { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                //info!("Stopping '{}'", service.name);
+                // info!("Stopping '{}'", service.config.name);
                 stop(service, sm_scheme);
             } else {
-                warn!("stop failed: no service named '{}'", service_name);
+                let name = service_name.clone();
+                let msg = TOMLMessage::String(format!("Unable to stop '{}': No such service", name));
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                    .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
+                warn!("stop failed: no service named '{}'", name);
             }
-            // reset the current command value
-            sm_scheme.cmd = None;
         }
         Some(SMCommand::Start { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                //info!("Starting '{}'", service.name);
-                start(service);
+                //info!("Starting '{}'", service.config.name);
+                start(service, Some(sm_scheme));
             } else {
-                warn!("start failed: no service named '{}'", service_name);
+                let name = service_name.clone();
+                let msg = TOMLMessage::String(format!("Unable to start '{}': No such service", name));
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                    .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
+                warn!("start failed: no service named '{}'", name);
             }
-            // reset the current command value
-            sm_scheme.cmd = None;
         }
-        Some(SMCommand::List) => {
-            list(services, sm_scheme)
-            // ! do not reset the current command value -> wait for scheme.rs to handle it
-        }
+        Some(SMCommand::List) => list(services, sm_scheme),
         Some(SMCommand::Clear { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                //info!("Clearing short-term stats for '{}'", service.name);
+                //info!("Clearing short-term stats for '{}'", service.config.name);
                 clear(service);
+            } else {
+                let name = service_name.clone();
+                let msg = TOMLMessage::String(format!("Unable to clear '{}': No such service", name));
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                    .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
+                warn!("clear failed: no service named '{}'", name);
             }
-            // reset the current command value
-            sm_scheme.cmd = None;
         }
         Some(SMCommand::Info { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
-                //info!("Finding information for '{}'", service.name);
+                //info!("Finding information for '{}'", service.config.name);
                 info(service, sm_scheme);
             } else {
-                warn!("info failed: no service named '{}'", service_name);
-                // reset the current command value
-                sm_scheme.cmd = None;
+                let name = service_name.clone();
+                let msg = TOMLMessage::String(format!("Unable to get info for '{}': No such service", name));
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                    .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
+                warn!("info failed: no service named '{}'", name);
             }
         }
         Some(SMCommand::Registry { subcommand }) => match subcommand {
             RegistryCommand::View { service_name } => {
                 let service_string = view_entry(service_name);
-                sm_scheme.response_buffer = service_string.as_bytes().to_vec();
+                let msg = TOMLMessage::String(service_string);
+                let _ = sm_scheme.write_response(
+                    toml::to_string(&msg)
+                        .unwrap_or_else(|_| String::from(""))
+                    .as_bytes());
             }
             RegistryCommand::Add {
                 service_name,
@@ -184,16 +186,14 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 if services.contains_key(service_name) {
                     //println!("key found!");
                     let entry = services.get(service_name).unwrap();
-                    //println!("{}", entry.scheme_path);
+                    //println!("{}", entry.config.scheme_path);
                 } else {
                     //println!("key not found!");
                 }
-                sm_scheme.cmd = None;
             }
             RegistryCommand::Remove { service_name } => {
                 rm_entry(service_name);
                 rm_hash_entry(services, service_name);
-                sm_scheme.cmd = None;
             }
             RegistryCommand::Edit {
                 service_name,
@@ -217,15 +217,16 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                     scheme_path,
                     depends.as_ref().unwrap(),
                 );
-                sm_scheme.cmd = None;
             }
         },
         None => {}
     }
+    // reset the current command value
+    sm_scheme.cmd = None;
 }
 
 fn update_service_info(service: &mut ServiceEntry) {
-    //info!("Updating information for: {}", service.name);
+    //info!("Updating information for: {}", service.config.name);
 
     let read_buffer: &mut [u8] = &mut [b'0'; 48];
 
@@ -281,14 +282,19 @@ fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         let _kill_ret = syscall::call::kill(service.pid, syscall::SIGKILL);
         service.running = false;
     } else {
-        warn!("stop failed: {} was already stopped", service.name);
+        let msg = TOMLMessage::String(format!("Unable to stop '{}': Already stopped", service.config.name));
+        let _ = sm_scheme.write_response(
+            toml::to_string(&msg)
+            .unwrap_or_else(|_| String::from(""))
+            .as_bytes());
+        warn!("stop failed: '{}' was already stopped", service.config.name);
     }
 }
 
-fn start(service: &mut ServiceEntry) {
+fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
     // can add args here later with '.arg()'
     if !service.running {
-        match std::process::Command::new(service.name.as_str()).spawn() {
+        match std::process::Command::new(service.config.name.as_str()).spawn() {
             Ok(mut child) => {
                 //service.pid = child.id().try_into().unwrap();
                 //service.pid += 2;
@@ -296,12 +302,12 @@ fn start(service: &mut ServiceEntry) {
                 match child.wait() {
                     Ok(_ext) => {}
                     Err(_) => {
-                        error!("{} failed to start!", service.name);
+                        error!("{} failed to start!", service.config.name);
                         return;
                     }
                 }
                 let child_scheme =
-                    match libredox::call::open(service.scheme_path.clone(), O_RDWR, 1) {
+                    match libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 1) {
                         Ok(fd) => fd,
                         Err(_) => {
                             error!("failed to open service scheme!");
@@ -335,14 +341,21 @@ fn start(service: &mut ServiceEntry) {
                 service.running = true;
             }
 
-            Err(_) => {
-                warn!("start failed: could not start {}", service.name);
+            Err(_e) => {
+                warn!("start failed: could not start {}", service.config.name);
             }
         };
     } else {
-        warn!("service: '{}' is already running", service.name);
+        if let Some(sm_scheme) = sm_scheme {
+            let msg = TOMLMessage::String(format!("Unable to start '{}': Already running", service.config.name));
+            let _ = sm_scheme.write_response(
+                toml::to_string(&msg)
+                .unwrap_or_else(|_| String::from(""))
+                .as_bytes());
+        }
+        warn!("service: '{}' is already running", service.config.name);
         //test_service_data(service);
-        if service.name == "gtrand2" {
+        if &service.config.name == "gtrand2" {
             test_timeout(service);
         }
         // When we actually report the total number of reads/writes, it should actually be the total added
@@ -377,7 +390,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
                 Live DUP count: {}, Total: {} \n\
                 Live ERROR count: {}, Total: {} \n\
                 Message: \"{}\" ",
-            service.name,
+            service.config.name,
             uptime_string,
             time_init_string,
             service.read_count,
@@ -397,7 +410,11 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         //info!("~sm info string: {:#?}", info_string);
 
         // set the info buffer to the formatted info string
-        sm_scheme.response_buffer = info_string.as_bytes().to_vec();
+        let msg = TOMLMessage::String(info_string);
+        let _ = sm_scheme.write_response(
+            toml::to_string(&msg)
+                .unwrap_or_else(|_| String::from(""))
+            .as_bytes());
     } else {
         let info_string = format!(
             "Service: {} is STOPPED\n\
@@ -408,7 +425,7 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
             Total DUP count: {}\n\
             Total ERROR count: {}\n\
             Last message: \"{}\"",
-            service.name,
+            service.config.name,
             service.total_reads,
             service.total_writes,
             service.total_opens,
@@ -418,39 +435,58 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
             service.message
         );
         // set the info buffer to the formatted info string
-        sm_scheme.response_buffer = info_string.as_bytes().to_vec();
-        //sm_scheme.cmd = None;
+        let msg = TOMLMessage::String(info_string);
+        let _ = sm_scheme.write_response(
+            toml::to_string(&msg)
+                .unwrap_or_else(|_| String::from(""))
+            .as_bytes());
     }
 }
 
 fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
-    let mut end_string: String = "Name | PID | Uptime | Message | Status\n".to_string();
+    let mut service_stats: Vec<ServiceRuntimeStats> = Vec::new();
+    // let mut end_string = String::new();
+    // let mut end_string: String = "Name | PID | Uptime | Message | Status\n".to_string();
 
     //let mut listString = "";
     //hashmap_bytes(services, sm_scheme);
     for service in service_map.values_mut() {
-        //let service = services.get_mut(&sm_scheme.arg1)
         if service.running {
             update_service_info(service);
-            // set up time strings
-            let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
-
-            let list_string = format!(
-                "{} | {} | {} | {} | Running\n",
-                service.name, service.pid, uptime_string, service.message
-            );
-            //info!("line: {}", list_string); //service info
-            end_string.push_str(&list_string);
-
-            //info!("End: {}", end_string); //end string
-            //info!("{:#?}", sm_scheme.response_buffer.as_ptr()); //prints whole buffer
-        } else {
-            let stopped_string = format!("{} | none | none | none | not running\n", service.name);
-            end_string.push_str(&stopped_string);
         }
+
+        service_stats.push(ServiceRuntimeStats {
+            name: service.config.name.clone(),
+            pid: service.pid,
+            time_init: service.time_init,
+            time_started: service.time_started,
+            time_now: Local::now().timestamp_millis(),
+            message: service.message.clone(),
+            running: service.running,
+        });
+        // if service.running {
+        //     update_service_info(service);
+        //     // set up time strings
+        //     let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
+
+        //     let list_string = format!(
+        //         "{} | {} | {} | {} | Running\n",
+        //         service.config.name, service.pid, uptime_string, service.message
+        //     );
+        //     info!("line: {}", list_string);
+        //     end_string.push_str(&list_string);
+        //     info!("End: {}", end_string);
+        // } else {
+        //     let stopped_string = format!("{} | none | none | none | not running\n", service.config.name);
+        //     end_string.push_str(&stopped_string);
+        // }
     }
 
-    sm_scheme.response_buffer = end_string.as_bytes().to_vec();
+    let msg = TOMLMessage::ServiceStats(service_stats);
+    let _ = sm_scheme.write_response(
+        toml::to_string(&msg)
+            .unwrap_or_else(|_| String::from(""))
+        .as_bytes());
 }
 
 // function that takes a time difference and returns a string of the time in hours, minutes, and seconds
@@ -480,33 +516,47 @@ fn time_string(start_time: i64, end_time: i64) -> String {
 }
 
 fn clear(service: &mut ServiceEntry) {
-    // read the requests into a buffer
-    let read_buffer: &mut [u8] = &mut [b'0'; 48];
-    let _ = read_helper(service, read_buffer, "request_count");
+    if (service.running) {
+        // read the requests into a buffer
+        let read_buffer: &mut [u8] = &mut [b'0'; 48];
+        let _ = read_helper(service, read_buffer, "request_count");
 
-    // turn that buffer into read/write as integers
-    let mut read_bytes: [u8; 8] = [0; 8];
-    let mut write_bytes: [u8; 8] = [0; 8];
-    let mut open_bytes: [u8; 8] = [0; 8];
-    let mut close_bytes: [u8; 8] = [0; 8];
-    let mut dup_bytes: [u8; 8] = [0; 8];
-    let mut error_bytes: [u8; 8] = [0; 8];
-    read_bytes.clone_from_slice(&read_buffer[0..8]);
-    write_bytes.clone_from_slice(&read_buffer[8..16]);
-    open_bytes.clone_from_slice(&read_buffer[16..24]);
-    close_bytes.clone_from_slice(&read_buffer[24..32]);
-    dup_bytes.clone_from_slice(&read_buffer[32..40]);
-    error_bytes.clone_from_slice(&read_buffer[40..48]);
-    // count this for our service's totals
-    service.total_reads += u64::from_ne_bytes(read_bytes);
-    service.total_writes += u64::from_ne_bytes(write_bytes);
-    service.total_opens += u64::from_ne_bytes(open_bytes);
-    service.total_closes += u64::from_ne_bytes(close_bytes);
-    service.total_dups += u64::from_ne_bytes(dup_bytes);
-    service.total_errors += u64::from_ne_bytes(error_bytes);
+        // turn that buffer into read/write as integers
+        let mut read_bytes: [u8; 8] = [0; 8];
+        let mut write_bytes: [u8; 8] = [0; 8];
+        let mut open_bytes: [u8; 8] = [0; 8];
+        let mut close_bytes: [u8; 8] = [0; 8];
+        let mut dup_bytes: [u8; 8] = [0; 8];
+        let mut error_bytes: [u8; 8] = [0; 8];
+        read_bytes.clone_from_slice(&read_buffer[0..8]);
+        write_bytes.clone_from_slice(&read_buffer[8..16]);
+        open_bytes.clone_from_slice(&read_buffer[16..24]);
+        close_bytes.clone_from_slice(&read_buffer[24..32]);
+        dup_bytes.clone_from_slice(&read_buffer[32..40]);
+        error_bytes.clone_from_slice(&read_buffer[40..48]);
+        // count this for our service's totals
+        service.total_reads += u64::from_ne_bytes(read_bytes);
+        service.total_writes += u64::from_ne_bytes(write_bytes);
+        service.total_opens += u64::from_ne_bytes(open_bytes);
+        service.total_closes += u64::from_ne_bytes(close_bytes);
+        service.total_dups += u64::from_ne_bytes(dup_bytes);
+        service.total_errors += u64::from_ne_bytes(error_bytes);
 
-    // clear the data and close the schemes.
-    let _ = write_helper(service, "control", "clear");
+        // clear the data and close the schemes.
+        let _ = write_helper(service, "control", "clear");
+        
+        service.read_count = 0;
+        service.write_count = 0;
+        service.open_count = 0;
+        service.close_count = 0;
+        service.dup_count = 0;
+        service.error_count = 0;
+
+        // TODO: write "clear successful" to output
+    } else {
+        // TODO: write "clear unsuccessful" to output
+        warn!("Attempted to clear '{}' which is not running!", service.config.name);
+    }
 }
 
 fn test_timeout(gtrand2: &mut ServiceEntry) {
@@ -576,7 +626,7 @@ fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> R
     let mut try_again = true;
     let mut result: Result<usize> = Err(Error::new(EBADF));
     while try_again {
-        result = match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
+        result = match libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 0) {
             Ok(child_scheme) => {
                 // determine which scheme we are trying to read from
                 let read_scheme = if !data.is_empty() {
@@ -616,7 +666,7 @@ fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> R
                     }
                     Err(_recv_err) => {
                         drop(receiver);
-                        warn!("read operation on {} timed out!", service.name);
+                        warn!("read operation on {} timed out!", service.config.name);
                         // attempt to recover the service, once this returns, if the service is still running then it has ben successfully recovered
                         if recover(service) {
                             try_again = true;
@@ -639,7 +689,7 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
     let mut try_again = true;
     let mut result: Result<usize> = Err(Error::new(EBADF));
     while try_again {
-        result = match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
+        result = match libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 0) {
             Ok(child_scheme) => {
                 // determine which scheme we are trying to read from
                 let write_scheme = if !subscheme_name.is_empty() {
@@ -661,7 +711,10 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
                 let write_thread = thread::spawn(move || {
                     let thread_buf: &mut [u8; 64] = &mut [0; 64];
                     thread_buf.clone_from_slice(&thread_data[0..thread_data.len()]);
-                    match sender.send(libredox::call::write(write_scheme, thread_buf)) {
+                    let mut thread_wr = thread_buf.to_vec();
+                    thread_wr.retain(|c| *c != b'\0');
+                    let wr: &[u8] = &thread_wr;
+                    match sender.send(libredox::call::write(write_scheme, wr)) {
                         Ok(_result) => {
                             return;
                         }
@@ -676,15 +729,19 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
                     Ok(result) => {
                         // dropping the reciever here should intterupt the sender's thread, stop trying to read and return
                         drop(receiver);
-                        write_thread.join().expect("write timeout thread didn't join!");
+                        write_thread
+                            .join()
+                            .expect("write timeout thread didn't join!");
                         let _close_res = libredox::call::close(write_scheme);
                         try_again = false;
                         result
                     }
                     Err(_recv_err) => {
                         drop(receiver);
-                        warn!("write operation on {} timed out!", service.name);
-                        write_thread.join().expect("write timeout thread didn't join!");
+                        warn!("write operation on {} timed out!", service.config.name);
+                        write_thread
+                            .join()
+                            .expect("write timeout thread didn't join!");
                         // attempt to recover the service, once this returns, if the service is still running then it has ben successfully recovered
                         if recover(service) {
                             try_again = true;
@@ -707,11 +764,11 @@ fn recover(service: &mut ServiceEntry) -> bool {
     let _kill_res = syscall::kill(service.pid, syscall::SIGKILL);
     service.running = false;
     service.time_started = Local::now().timestamp_millis(); // where should this go for the start command?
-    let running = match std::process::Command::new(service.name.as_str()).spawn() {
+    let running = match std::process::Command::new(service.config.name.as_str()).spawn() {
         Ok(mut child) => {
             let _ = child.wait();
 
-            let child_scheme = libredox::call::open(service.scheme_path.clone(), O_RDWR, 1)
+            let child_scheme = libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 1)
                 .expect("couldn't open child scheme");
             let pid_req = b"pid";
             let pid_scheme = libredox::call::dup(child_scheme, pid_req).expect("could not get pid");
@@ -719,7 +776,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
             let read_buffer: &mut [u8] = &mut [b'0'; 32];
             libredox::call::read(pid_scheme, read_buffer).expect("could not read pid");
 
-            let _recover_res = match libredox::call::open(service.scheme_path.clone(), O_RDWR, 0) {
+            let _recover_res = match libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 0) {
                 Ok(child_scheme) => {
                     // determine which scheme we are trying to read from
                     let pid_scheme = {
@@ -748,7 +805,7 @@ fn recover(service: &mut ServiceEntry) -> bool {
                         Ok(result) => {
                             // dropping the reciever here should intterupt the sender's thread, stop trying to read and return
                             drop(receiver);
-                            info!("recovered {} from timeout", service.name);
+                            info!("recovered {} from timeout", service.config.name);
                             read_buffer.clone_from_slice(
                                 &read_thread.join().expect("didn't join!?")[0..read_buffer.len()],
                             );
@@ -779,23 +836,9 @@ fn recover(service: &mut ServiceEntry) -> bool {
         }
 
         Err(_e) => {
-            warn!("start failed: could not restart {}", service.name);
+            warn!("start failed: could not restart {}", service.config.name);
             service.running
         }
     };
     running
-}
-
-// todo: remove (unused)
-fn extract_bytes(data_vec: &Vec<GenericData>) -> Vec<u8> {
-    data_vec
-        .iter()
-        .filter_map(|d| {
-            if let GenericData::Byte(b) = d {
-                Some(*b)
-            } else {
-                None
-            }
-        })
-        .collect()
 }

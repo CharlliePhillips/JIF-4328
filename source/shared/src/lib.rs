@@ -1,9 +1,10 @@
 use clap::Subcommand;
+use std::str;
 use serde::{Deserialize, Serialize};
-use bincode::{Decode, Encode};
 
 /// Command enum used by the services command line
-#[derive(Subcommand, Encode, Decode)]
+#[derive(Subcommand, Serialize, Deserialize)]
+#[serde(tag = "command")]
 pub enum SMCommand {
     #[command(about = "Start a service")]
     Start {
@@ -34,7 +35,7 @@ pub enum SMCommand {
     }
 }
 
-#[derive(Subcommand, Encode, Decode)]
+#[derive(Subcommand, Serialize, Deserialize)]
 pub enum RegistryCommand {
     #[command(about = "Add a service to the registry")]
     Add {
@@ -108,38 +109,39 @@ fn validate_args(s: &str) -> Result<Vec<String>, String> {
     return Ok(vec.args);    
 }
 
-
-impl RegistryCommand {
-    pub fn name(&self) -> String {
-        match self {
-            RegistryCommand::Add{..} => String::from("add"),
-            RegistryCommand::Remove{..} => String::from("remove"),
-            RegistryCommand::View{..} => String::from("view"),
-            RegistryCommand::Edit{..} => String::from("edit"),
-        }
-    }
-}
-
 impl SMCommand {
-    /// Returns the lowercase name of the command as a String
-    pub fn name(&self) -> String {
-        match self {
-            SMCommand::Stop{..} => String::from("stop"),
-            SMCommand::Start{..} => String::from("start"),
-            SMCommand::List => String::from("list"),
-            SMCommand::Info{..} => String::from("info"),
-            SMCommand::Clear{..} => String::from("clear"),
-            SMCommand::Registry{..} => String::from("registry"),
-        }
-    }
-
     pub fn encode(&self) -> Result<Vec<u8>, String> {
-        bincode::encode_to_vec(self, bincode::config::standard()).map_err(|e| format!("Failed to encode SMCommand into bytes: {}", e))
+        toml::to_string(self)
+            .map(|s| { s.into_bytes() })
+            .map_err(|e| format!("Failed to encode SMCommand into string: {}", e))
     }
 
     pub fn decode(bytes: &[u8]) -> Result<SMCommand, String> {
-        bincode::decode_from_slice(bytes, bincode::config::standard())
-            .map(|c| c.0)
-            .map_err(|e| format!("Failed to decode bytes into SMCommand: {}", e))
+        let toml_str = match str::from_utf8(bytes) {
+            Ok(s) => s,
+            Err(e) => return Err(format!("Failed to decode bytes into string: {}", e))
+        };
+
+        toml::from_str(toml_str)
+            .map_err(|e| format!("Failed to decode bytes into SMCommand: {}", e))           
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ServiceRuntimeStats {
+    pub name: String,
+    pub pid: usize,
+    pub time_init: i64,
+    pub time_started: i64,
+    pub time_now: i64,
+    pub message: String,
+    pub running: bool,
+
+}
+
+/// Message variant
+#[derive(Serialize, Deserialize)]
+pub enum TOMLMessage {
+    String(String),
+    ServiceStats(Vec<ServiceRuntimeStats>),
 }
