@@ -567,7 +567,7 @@ fn test_timeout(gtrand2: &mut ServiceEntry) {
         "read random {:#?} from gtrand2, forcing timeout...",
         i64::from_ne_bytes(*read_buf)
     );
-    let _ = write_helper(gtrand2, "", "error");
+    let _ = write_helper(gtrand2, "", "timeout");
     // expecting this call to time out
     match write_helper(gtrand2, "", "rseed") {
         Ok(_usize) => {
@@ -578,7 +578,7 @@ fn test_timeout(gtrand2: &mut ServiceEntry) {
         }
     }
 
-    let _ = write_helper(gtrand2, "", "error");
+    let _ = write_helper(gtrand2, "", "timeout");
     match read_helper(gtrand2, read_buf, "") {
         Ok(_usize) => {
             info!(
@@ -739,9 +739,7 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
                     Err(_recv_err) => {
                         drop(receiver);
                         warn!("write operation on {} timed out!", service.config.name);
-                        write_thread
-                            .join()
-                            .expect("write timeout thread didn't join!");
+
                         // attempt to recover the service, once this returns, if the service is still running then it has ben successfully recovered
                         if recover(service) {
                             try_again = true;
