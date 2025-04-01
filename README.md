@@ -2,8 +2,25 @@
 A system health monitoring service for Redox OS
 
 ## Release Notes
-### Version 0.3.0
 
+### Version 0.4.0
+#### New Features
+* Help option in command line is now complete, add `-h` or `--help` to any command for usage information
+* `services list` table is actually a table now and not plain text.
+* Refined system logging.
+* Started GUI development.
+
+#### Known Issues
+- GUI is incomplete.
+- BaseScheme will need an additional version to support services implementing SchemeBlock instead of Scheme like disk drivers.
+- Start and Stop commands do not give CLI feedback and should.
+
+### Bug Fixes
+* Resolved most compile warnings.
+* Fixed 2 regressions with `services clear`
+* Fixed timeout recovery test.
+
+### Version 0.3.0
 #### New Features
 * The registry commands 'services registry ...' can be used to view and edit the registry.
     - `services registry view <daemon_name>`
@@ -16,7 +33,7 @@ A system health monitoring service for Redox OS
 * When the service monitor attempts to read from or write to a service that is not responding it will automatically try to restart it and complete the operation.
 
 #### Known Issues
-- BaseScheme will need an additional version to support services implementing SchemBlock instead of Scheme like disk drivers.
+- BaseScheme will need an additional version to support services implementing SchemeBlock instead of Scheme like disk drivers.
 - When attempting to run the service recovery test too quickly the whole OS will freeze. This is likely due to the threading used for timeout detection, other components may need to be refactored for multithreading for this to be fixed.
 - Start and Stop commands do not give CLI feedback and should.
 - Excluding the dependencies argument from `services registry edit` causes a panic
@@ -26,7 +43,6 @@ A system health monitoring service for Redox OS
 ### Bug Fixes
 * The info and list commands now properly display services that are not running.
 
-## Release Notes
 ### Version 0.2.0
 
 #### New Features
@@ -38,7 +54,7 @@ A system health monitoring service for Redox OS
 `services clear gtrand`
 
 #### Known Issues
-* BaseScheme will need an additional version to support services implementing SchemBlock instead of Scheme like disk drivers.
+* BaseScheme will need an additional version to support services implementing SchemeBlock instead of Scheme like disk drivers.
 * Moving data points around as byte arrays should be replaced with helper functions to get the byte array and translate the byte array into something useful.
 * Commands to the service monitor should be of a new enum type instead of a hard coded integer.
 
