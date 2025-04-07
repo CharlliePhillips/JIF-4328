@@ -52,7 +52,7 @@ pub enum RegistryCommand {
         #[arg(long = "override", help = "If present, the service monitor will not override the fields in the registry")]
         manual_override: bool, //this will default to false, if --override, it will be true 
         
-        #[arg(value_name = "depends", help = "A list of dependencies for the daemon", value_parser = validate_args)]
+        #[arg(value_name = "depends", help = "A list of dependencies for the daemon", value_parser = validate_deps)]
         depends: Option<::std::vec::Vec<String>>,
         
         #[arg(help = "The path to the scheme file")]
@@ -79,7 +79,7 @@ pub enum RegistryCommand {
         #[arg(value_name = "edit_args", help = "Arguments for starting the daemon", value_parser = validate_args)]
         edit_args: Option<::std::vec::Vec<String>>,
         
-        #[arg(value_name = "depends", help = "A list of dependencies for the daemon", value_parser = validate_args)]
+        #[arg(value_name = "depends", help = "A list of dependencies for the daemon", value_parser = validate_deps)]
         depends: Option<::std::vec::Vec<String>>,
 
         #[arg(help = "The path to the scheme file")]
@@ -89,6 +89,7 @@ pub enum RegistryCommand {
     }
 }
 
+/// Validation function used to ensure the correct format is used for the `args` vector
 fn validate_args(s: &str) -> Result<Vec<String>, String> {
     let mut parsed: String = String::from(s);
     if !parsed.starts_with("args=") {
@@ -108,6 +109,28 @@ fn validate_args(s: &str) -> Result<Vec<String>, String> {
     };
 
     return Ok(vec.args);    
+}
+
+/// Validation function used to ensure the correct format is used for the `deps` vector
+fn validate_deps(s: &str) -> Result<Vec<String>, String> {
+    let mut parsed: String = String::from(s);
+    if !parsed.starts_with("deps=") {
+        parsed.insert_str(0, "deps=");
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct Deps {
+        deps: Vec<String>,
+    }
+
+    let vec: Deps = match toml::from_str(&parsed) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(format!("{}\n  Expected format: ['dep0', 'dep1', ... ]", e))
+        },
+    };
+
+    return Ok(vec.deps);    
 }
 
 impl SMCommand {
