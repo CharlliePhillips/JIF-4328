@@ -9,10 +9,12 @@ use std::io::{Read, Write};
 
 use bstr::ByteSlice;
 use cosmic::app::{Core, Settings, Task};
+use cosmic::iced::Background;
+use cosmic::iced::Color;
 use cosmic::iced::widget::{column, row};
 use cosmic::iced_core::{Element, Size};
 use cosmic::prelude::*;
-use cosmic::widget::table;
+use cosmic::widget::{table, Column};
 use cosmic::widget::{self, nav_bar};
 use cosmic::{executor, iced};
 use shared::{format_uptime, get_response, SMCommand, TOMLMessage};
@@ -132,14 +134,22 @@ pub enum Message {
     Refresh,
     Start(String),
     Stop(String),
+    ToPrimary,
+    ToDoc,
     NoOp,
 }
 
+#[derive(Clone, Debug)]
+enum Screen {
+    Primary,
+    Doc,
+}
 /// The [`App`] stores application-specific state.
 pub struct App {
     core: Core,
     table_model: table::SingleSelectModel<Item, Category>,
     selected: Option<String>,
+    screen: Screen,
 }
 
 /// Implement [`cosmic::Application`] to integrate with COSMIC.
@@ -178,8 +188,8 @@ impl cosmic::Application for App {
         ]);
 
         get_services(&mut table_model);
-
-        let app = App { core, table_model, selected: None, };
+        let screen: Screen = Screen::Primary;
+        let app = App { core, table_model, selected: None, screen};
 
         let command = Task::none();
 
@@ -229,6 +239,12 @@ impl cosmic::Application for App {
                 }
                 get_services(&mut self.table_model); //perform refresh automatically
             }
+            Message::ToPrimary => {
+                self.screen = Screen::Primary;
+            }
+            Message::ToDoc => {
+                self.screen = Screen::Doc;
+            }
             Message::NoOp => {}
         }
         Task::none()
@@ -236,92 +252,148 @@ impl cosmic::Application for App {
 
     /// Creates a view after each update.
     fn view(&self) -> Element<Self::Message, Theme, Renderer> {
-        // by default start & stop buttons do nothing
-        let mut start_msg = Message::NoOp;
-        let mut stop_msg = Message::NoOp;
-        match self.table_model.item(self.table_model.active()) {
-            Some(selected) => {
-                // if some item is selected then start and stop should operate on that
-                start_msg = Message::Start(selected.name.clone());
-                stop_msg = Message::Stop(selected.name.clone());
-            },
-            None => {}
-        }
-                
-        let button_row = row![
-            cosmic::widget::button::text("Start").on_press(start_msg),
-            cosmic::widget::button::text("Stop").on_press(stop_msg),
-            cosmic::widget::button::text("Refresh").on_press(Message::Refresh),
-        ]
-        .spacing(cosmic::theme::spacing().space_s)
-        .align_y(iced::Alignment::Center);
-    
-        let centered = cosmic::widget::container(
-            column![
-                button_row,
-                cosmic::widget::responsive(|size| {
-                    if size.width < 600.0 {
-                        widget::compact_table(&self.table_model)
-                            .on_item_left_click(Message::ItemSelect)
-                            .item_context(|item| {
-                                Some(widget::menu::items(
-                                    &HashMap::new(),
-                                    vec![widget::menu::Item::Button(
-                                        format!("Action on {}", item.name),
-                                        None,
-                                        Action::None,
-                                    )],
-                                ))
+        match self.screen {
+            Screen::Primary => {
+                // by default start & stop buttons do nothing
+                let mut start_msg = Message::NoOp;
+                let mut stop_msg = Message::NoOp;
+                let mut info_text: String = "".to_string();
+                match self.table_model.item(self.table_model.active()) {
+                    Some(selected) => {
+                        // if some item is selected then start and stop should operate on that
+                        start_msg = Message::Start(selected.name.clone());
+                        stop_msg = Message::Stop(selected.name.clone());
+                        // TODO: this is probably where service info column should be built
+                        // also update when TOML refactor is ready
+                        info_text = get_info(selected.name.clone());
+                    },
+                    None => {}
+                }
+
+                let button_row = row![
+                    cosmic::widget::button::text("Help").on_press(Message::ToDoc),
+                    cosmic::widget::button::text("Start").on_press(start_msg),
+                    cosmic::widget::button::text("Stop").on_press(stop_msg),
+                    cosmic::widget::button::text("Refresh").on_press(Message::Refresh),
+                ]
+                .spacing(cosmic::theme::spacing().space_s)
+                .align_y(iced::Alignment::Center);
+
+                let centered = cosmic::widget::container(
+                    column![
+                        button_row,
+                        cosmic::widget::responsive(|size| {
+                            if size.width < 600.0 {
+                                widget::compact_table(&self.table_model)
+                                    .on_item_left_click(Message::ItemSelect)
+                                    .item_context(|item| {
+                                        Some(widget::menu::items(
+                                            &HashMap::new(),
+                                            vec![widget::menu::Item::Button(
+                                                format!("Action on {}", item.name),
+                                                None,
+                                                Action::None,
+                                            )],
+                                        ))
+                                    })
+                                    .apply(Element::from)
+                            } else {
+                                widget::table(&self.table_model)
+                                    .on_item_left_click(Message::ItemSelect)
+                                    .on_category_left_click(Message::CategorySelect)
+                                    .item_context(|item| {
+                                        Some(widget::menu::items(
+                                            &HashMap::new(),
+                                            vec![widget::menu::Item::Button(
+                                                format!("Action on {}", item.name),
+                                                None,
+                                                Action::None,
+                                            )],
+                                        ))
+                                    })
+                                    .category_context(|category| {
+                                        Some(widget::menu::items(
+                                            &HashMap::new(),
+                                            vec![
+                                                widget::menu::Item::Button(
+                                                    format!("Action on {} category", category.to_string()),
+                                                    None,
+                                                    Action::None,
+                                                ),
+                                                widget::menu::Item::Button(
+                                                    format!(
+                                                        "Other action on {} category",
+                                                        category.to_string()
+                                                    ),
+                                                    None,
+                                                    Action::None,
+                                                ),
+                                            ],
+                                        ))
+                                    })
+                                    .apply(Element::from)
+                            }
+                        })
+                    ]
+                    .spacing(cosmic::theme::spacing().space_s)
+                    .width(iced::Length::Fill)
+                    .align_x(iced::Alignment::Center),
+                )
+                .width(iced::Length::Fill)
+                .height(iced::Length::Shrink)
+                .align_x(iced::Alignment::Center)
+                .align_y(iced::Alignment::Center);
+                let body = if info_text != "" {
+                    cosmic::widget::container(
+                        row![
+                            centered,
+                            cosmic::widget::container(
+                                cosmic::widget::text(info_text)
+                            )
+                            .style(|_theme| {
+                                //TODO: theme this color
+                                widget::container::Style {
+                                    background: Some(Background::Color(Color::from_rgba8(
+                                        0x40, 0x00, 0x00, 0.5
+                                    ))),
+                                    ..Default::default()
+                                }
                             })
-                            .apply(Element::from)
-                    } else {
-                        widget::table(&self.table_model)
-                            .on_item_left_click(Message::ItemSelect)
-                            .on_category_left_click(Message::CategorySelect)
-                            .item_context(|item| {
-                                Some(widget::menu::items(
-                                    &HashMap::new(),
-                                    vec![widget::menu::Item::Button(
-                                        format!("Action on {}", item.name),
-                                        None,
-                                        Action::None,
-                                    )],
-                                ))
-                            })
-                            .category_context(|category| {
-                                Some(widget::menu::items(
-                                    &HashMap::new(),
-                                    vec![
-                                        widget::menu::Item::Button(
-                                            format!("Action on {} category", category.to_string()),
-                                            None,
-                                            Action::None,
-                                        ),
-                                        widget::menu::Item::Button(
-                                            format!(
-                                                "Other action on {} category",
-                                                category.to_string()
-                                            ),
-                                            None,
-                                            Action::None,
-                                        ),
-                                    ],
-                                ))
-                            })
-                            .apply(Element::from)
-                    }
-                })
-            ]
-            .spacing(cosmic::theme::spacing().space_s)
-            .width(iced::Length::Fill)
-            .align_x(iced::Alignment::Center),
-        )
-        .width(iced::Length::Fill)
-        .height(iced::Length::Shrink)
-        .align_x(iced::Alignment::Center)
-        .align_y(iced::Alignment::Center);
-        Element::from(centered)
+                        ]
+                    )
+                } else {
+                    centered
+                };
+                Element::from(body)
+            }
+
+            Screen::Doc => {
+                // by default start & stop buttons do nothing
+                let button_row = row![
+                    cosmic::widget::button::text("Back").on_press(Message::ToPrimary),
+                ]
+                .spacing(cosmic::theme::spacing().space_s)
+                .align_y(iced::Alignment::Center);
+
+                let centered = cosmic::widget::container(
+                    column![
+                        button_row,
+
+                    ]
+                    .spacing(cosmic::theme::spacing().space_s)
+                    .width(iced::Length::Fill)
+                    .align_x(iced::Alignment::End),
+                )
+                .width(iced::Length::Fill)
+                .height(iced::Length::Shrink)
+                .align_x(iced::Alignment::Center)
+                .align_y(iced::Alignment::Center);
+                Element::from(centered)
+ 
+            }
+        }        
     }
+    
 }
 
 fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
@@ -367,6 +439,35 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
                     });
                 }
             }
+        }
+    }
+}
+
+// TODO maybe this should build the whole compontent for the view function instead of just getting the string
+// Either way needs TOML updates
+fn get_info(service: String) -> String {
+    let info_cmd = SMCommand::Info { service_name: service }.encode().unwrap();
+
+    let Ok(sm_fd) = &mut OpenOptions::new()
+        .write(true)
+        .open("/scheme/service-monitor")
+    else {
+        panic!()
+    };
+    let _ = File::write(sm_fd, &info_cmd);
+
+    let response_buffer = get_response(sm_fd);
+    let response_string = std::str::from_utf8(&response_buffer)
+        .expect("Error parsing response to UTF8")
+        .to_string();
+    let msg: TOMLMessage = toml::from_str(&response_string).expect("Error parsing UTF8 to TOMLMessage");
+
+    match &msg {
+        TOMLMessage::String(str) => {
+            return str.to_string().clone();
+        }
+        TOMLMessage::ServiceStats(_stats) => {
+            return "".to_string();
         }
     }
 }
