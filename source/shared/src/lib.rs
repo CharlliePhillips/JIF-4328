@@ -1,3 +1,5 @@
+//! Crate containing structs and functions shared by `service-monitor` and its front-ends
+
 use clap::Subcommand;
 use std::{fs::File, io::Read, str};
 use serde::{Deserialize, Serialize};
@@ -36,6 +38,7 @@ pub enum SMCommand {
     }
 }
 
+/// Registry subcommand used by the services command line to view/edit the registry
 #[derive(Subcommand, Serialize, Deserialize)]
 pub enum RegistryCommand {
     #[command(about = "Add a service to the registry")]
@@ -134,12 +137,14 @@ fn validate_deps(s: &str) -> Result<Vec<String>, String> {
 }
 
 impl SMCommand {
+    /// Converts this SMCommand into a TOML string stored in a byte buffer
     pub fn encode(&self) -> Result<Vec<u8>, String> {
         toml::to_string(self)
             .map(|s| { s.into_bytes() })
             .map_err(|e| format!("Failed to encode SMCommand into string: {}", e))
     }
 
+    /// Converts a byte buffer containing a TOML string into its original [SMCommand] if possible
     pub fn decode(bytes: &[u8]) -> Result<SMCommand, String> {
         let toml_str = match str::from_utf8(bytes) {
             Ok(s) => s,
@@ -170,6 +175,10 @@ pub enum TOMLMessage {
     ServiceStats(Vec<ServiceRuntimeStats>),
 }
 
+/// Reads the command responsed buffer from the service-monitor's scheme.
+/// # Panics
+/// If reading the file fails, this may cause a panic.
+// todo: Graceful error handling (put into a `Result<Vec<u8>, String>`, prevent timeouts?)
 pub fn get_response(sm_fd: &mut File) -> Vec<u8> {
     let mut response = Vec::<u8>::new();
     loop {
@@ -183,7 +192,7 @@ pub fn get_response(sm_fd: &mut File) -> Vec<u8> {
     return response;
 }
     
-// function that takes a time difference and returns a string of the time in hours, minutes, and seconds
+/// Function that takes a time difference and returns a string of the time in hours, minutes, and seconds
 pub fn format_uptime(start_time_ms: i64, end_time_ms: i64) -> String {
     let start = Local.timestamp_millis_opt(start_time_ms).unwrap();
     let end = Local.timestamp_millis_opt(end_time_ms).unwrap();
