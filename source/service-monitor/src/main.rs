@@ -9,7 +9,7 @@ use log::{error, info, warn};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{RequestKind, SignalBehavior, Socket};
 use scheme::SMScheme;
-use shared::{RegistryCommand, SMCommand, ServiceRuntimeStats, TOMLMessage};
+use shared::{CommandResponse, RegistryCommand, SMCommand, ServiceRuntimeStats, TOMLMessage};
 use std::{
     str,
     sync::mpsc,
@@ -88,7 +88,7 @@ fn main() {
     .expect("service-monitor: failed to daemonize");
 }
 
-/// Checks if the service-monitor's command value has been changed and performs the appropriate action.
+/// Executes then clears the command stored in the service-monitor's scheme.
 fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
     match &(sm_scheme.cmd) {
         Some(SMCommand::Stop { service_name }) => {
@@ -97,11 +97,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 stop(service, sm_scheme);
             } else {
                 let name = service_name.clone();
-                let msg = TOMLMessage::String(format!("Unable to stop '{}': No such service", name));
                 let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                    .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
+                    &CommandResponse::new(
+                        sm_scheme.cmd.as_ref().unwrap(),
+                        false,
+                        Some(TOMLMessage::String(format!("Unable to stop '{}': No such service", name)))
+                    )
+                );
                 warn!("stop failed: no service named '{}'", name);
             }
         }
@@ -111,11 +113,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 start(service, Some(sm_scheme));
             } else {
                 let name = service_name.clone();
-                let msg = TOMLMessage::String(format!("Unable to start '{}': No such service", name));
                 let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                    .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
+                    &CommandResponse::new(
+                        sm_scheme.cmd.as_ref().unwrap(),
+                        false,
+                        Some(TOMLMessage::String(format!("Unable to start '{}': No such service", name)))
+                    )
+                );
                 warn!("start failed: no service named '{}'", name);
             }
         }
@@ -126,11 +130,13 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 clear(service);
             } else {
                 let name = service_name.clone();
-                let msg = TOMLMessage::String(format!("Unable to clear '{}': No such service", name));
                 let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                    .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
+                    &CommandResponse::new(
+                        sm_scheme.cmd.as_ref().unwrap(),
+                        false,
+                        Some(TOMLMessage::String(format!("Unable to clear '{}': No such service", name)))
+                    )
+                );
                 warn!("clear failed: no service named '{}'", name);
             }
         }
@@ -140,22 +146,26 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 info(service, sm_scheme);
             } else {
                 let name = service_name.clone();
-                let msg = TOMLMessage::String(format!("Unable to get info for '{}': No such service", name));
                 let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                    .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
+                    &CommandResponse::new(
+                        sm_scheme.cmd.as_ref().unwrap(),
+                        false,
+                        Some(TOMLMessage::String(format!("Unable to get info for '{}': No such service", name)))
+                    )
+                );
                 warn!("info failed: no service named '{}'", name);
             }
         }
         Some(SMCommand::Registry { subcommand }) => match subcommand {
             RegistryCommand::View { service_name } => {
                 let service_string = view_entry(service_name);
-                let msg = TOMLMessage::String(service_string);
                 let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                        .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
+                    &CommandResponse::new(
+                        sm_scheme.cmd.as_ref().unwrap(),
+                        true,
+                        Some(TOMLMessage::String(service_string))
+                    )
+                );
             }
             RegistryCommand::Add {
                 service_name,
@@ -282,15 +292,18 @@ fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         let _kill_ret = syscall::call::kill(service.pid, syscall::SIGKILL);
         service.running = false;
     } else {
-        let msg = TOMLMessage::String(format!("Unable to stop '{}': Already stopped", service.config.name));
         let _ = sm_scheme.write_response(
-            toml::to_string(&msg)
-            .unwrap_or_else(|_| String::from(""))
-            .as_bytes());
+            &CommandResponse::new(
+                sm_scheme.cmd.as_ref().unwrap(),
+                false,
+                Some(TOMLMessage::String(format!("Unable to stop '{}': Already stopped", service.config.name)))
+            )
+        );
         warn!("stop failed: '{}' was already stopped", service.config.name);
     }
 }
 
+// TODO: add command responses to each condition
 fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
     // can add args here later with '.arg()'
     if !service.running {
@@ -347,11 +360,13 @@ fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
         };
     } else {
         if let Some(sm_scheme) = sm_scheme {
-            let msg = TOMLMessage::String(format!("Unable to start '{}': Already running", service.config.name));
             let _ = sm_scheme.write_response(
-                toml::to_string(&msg)
-                .unwrap_or_else(|_| String::from(""))
-                .as_bytes());
+                &CommandResponse::new(
+                    sm_scheme.cmd.as_ref().unwrap(),
+                    false,
+                    Some(TOMLMessage::String(format!("Unable to start '{}': Already running", service.config.name)))
+                )
+            );
         }
         warn!("service: '{}' is already running", service.config.name);
         //test_service_data(service);
@@ -410,11 +425,13 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         //info!("~sm info string: {:#?}", info_string);
 
         // set the info buffer to the formatted info string
-        let msg = TOMLMessage::String(info_string);
         let _ = sm_scheme.write_response(
-            toml::to_string(&msg)
-                .unwrap_or_else(|_| String::from(""))
-            .as_bytes());
+            &CommandResponse::new(
+                sm_scheme.cmd.as_ref().unwrap(),
+                true,
+                Some(TOMLMessage::String(info_string))
+            )
+        );
     } else {
         let info_string = format!(
             "Service: {} is STOPPED\n\
@@ -435,21 +452,19 @@ fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
             service.message
         );
         // set the info buffer to the formatted info string
-        let msg = TOMLMessage::String(info_string);
         let _ = sm_scheme.write_response(
-            toml::to_string(&msg)
-                .unwrap_or_else(|_| String::from(""))
-            .as_bytes());
+            &CommandResponse::new(
+                sm_scheme.cmd.as_ref().unwrap(),
+                true,
+                Some(TOMLMessage::String(info_string))
+            )
+        );
     }
 }
 
 fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
     let mut service_stats: Vec<ServiceRuntimeStats> = Vec::new();
-    // let mut end_string = String::new();
-    // let mut end_string: String = "Name | PID | Uptime | Message | Status\n".to_string();
 
-    //let mut listString = "";
-    //hashmap_bytes(services, sm_scheme);
     for service in service_map.values_mut() {
         if service.running {
             update_service_info(service);
@@ -464,29 +479,15 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSchem
             message: service.message.clone(),
             running: service.running,
         });
-        // if service.running {
-        //     update_service_info(service);
-        //     // set up time strings
-        //     let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
-
-        //     let list_string = format!(
-        //         "{} | {} | {} | {} | Running\n",
-        //         service.config.name, service.pid, uptime_string, service.message
-        //     );
-        //     info!("line: {}", list_string);
-        //     end_string.push_str(&list_string);
-        //     info!("End: {}", end_string);
-        // } else {
-        //     let stopped_string = format!("{} | none | none | none | not running\n", service.config.name);
-        //     end_string.push_str(&stopped_string);
-        // }
     }
 
-    let msg = TOMLMessage::ServiceStats(service_stats);
     let _ = sm_scheme.write_response(
-        toml::to_string(&msg)
-            .unwrap_or_else(|_| String::from(""))
-        .as_bytes());
+        &CommandResponse::new(
+            sm_scheme.cmd.as_ref().unwrap(),
+            true,
+            Some(TOMLMessage::ServiceStats(service_stats))
+        )
+    );
 }
 
 // function that takes a time difference and returns a string of the time in hours, minutes, and seconds
@@ -516,7 +517,7 @@ fn time_string(start_time: i64, end_time: i64) -> String {
 }
 
 fn clear(service: &mut ServiceEntry) {
-    if (service.running) {
+    if service.running {
         // read the requests into a buffer
         let read_buffer: &mut [u8] = &mut [b'0'; 48];
         let _ = read_helper(service, read_buffer, "request_count");

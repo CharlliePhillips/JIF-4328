@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use chrono::{self, Local, TimeZone};
 
 /// Command enum used by the services command line
-#[derive(Subcommand, Serialize, Deserialize)]
+#[derive(Subcommand, Serialize, Deserialize, Clone)]
 #[serde(tag = "command")]
 pub enum SMCommand {
     #[command(about = "Start a service")]
@@ -39,7 +39,7 @@ pub enum SMCommand {
 }
 
 /// Registry subcommand used by the services command line to view/edit the registry
-#[derive(Subcommand, Serialize, Deserialize)]
+#[derive(Subcommand, Serialize, Deserialize, Clone)]
 pub enum RegistryCommand {
     #[command(about = "Add a service to the registry")]
     Add {
@@ -156,6 +156,34 @@ impl SMCommand {
     }
 }
 
+/// Struct defining the response generated after running an [SMCommand]
+#[derive(Serialize, Deserialize)]
+pub struct CommandResponse {
+    /// Info regarding the command
+    pub status: CommandStatus,
+    /// Optional message the command may attach to its response
+    pub message: Option<TOMLMessage>,
+}
+
+impl CommandResponse {
+    /// Creates a new [CommandResponse] using the given command, success flag, and optional message.
+    /// This function does not take ownership of `command` (it is cloned), but does take ownership of `message`.
+    pub fn new(command: &SMCommand, success: bool, message: Option<TOMLMessage>) -> CommandResponse {
+        CommandResponse{status: CommandStatus {command: command.clone(), success: success}, message: message}
+    }
+}
+
+/// Struct containing info about the [SMCommand] that was run and whether it succeeded
+#[derive(Serialize, Deserialize)]
+pub struct CommandStatus {
+    /// A copy of the command struct that was run
+    pub command: SMCommand,
+    /// True if command was successfully executed, false otherwise
+    pub success: bool,
+}
+
+/// Struct containing data about a registered service's runtime stats.
+/// This is used primarily for the `services list` command.
 #[derive(Serialize, Deserialize)]
 pub struct ServiceRuntimeStats {
     pub name: String,
@@ -168,7 +196,7 @@ pub struct ServiceRuntimeStats {
 
 }
 
-/// Message variant
+/// Enum defining types of messages we may expect to get from a [CommandResponse]
 #[derive(Serialize, Deserialize)]
 pub enum TOMLMessage {
     String(String),

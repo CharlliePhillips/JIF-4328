@@ -1,5 +1,5 @@
 use clap::Parser;
-use shared::{SMCommand, TOMLMessage, get_response, format_uptime};
+use shared::{SMCommand, CommandResponse, TOMLMessage, get_response, format_uptime};
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
@@ -37,12 +37,12 @@ fn main() {
         let s = std::str::from_utf8(&response)
             .expect("Error parsing response to UTF8")
             .to_string();
-        let msg: TOMLMessage = toml::from_str(&s).expect("Error parsing UTF8 to TOMLMessage");
-        match &msg {
-            TOMLMessage::String(str) => {
+        let response: CommandResponse = toml::from_str(&s).expect("Error parsing UTF8 to CommandResponse");
+        match response.message {
+            Some(TOMLMessage::String(str)) => {
                 println!("{str}");
             }
-            TOMLMessage::ServiceStats(stats) => {
+            Some(TOMLMessage::ServiceStats(stats)) => {
                 let header_names = vec!["Name", "PID", "Uptime", "Message", "Status"];
 
                 let mut table_fmt = comfy_table::Table::new();
@@ -69,6 +69,7 @@ fn main() {
 
                 println!("{table_fmt}");
             }
+            _ => {}
         }
     }
 }

@@ -1,5 +1,5 @@
 use redox_scheme::Scheme;
-use shared::{RegistryCommand, SMCommand};
+use shared::{RegistryCommand, SMCommand, CommandResponse};
 use syscall::{error::*, MODE_CHR};
 
 //use std::fs::File;
@@ -13,6 +13,7 @@ pub struct SMScheme {
 }
 
 impl SMScheme {
+    /// Construct an [SMScheme] with default fields. 
     pub fn new() -> SMScheme {
         SMScheme {
             cmd: None,
@@ -21,17 +22,22 @@ impl SMScheme {
         }
     }
 
-    /// Write to the response buffer. If the response buffer has content already in it,
-    /// it will be overwritten.
-    pub fn write_response(&mut self, buf: &[u8]) -> Result<usize> {
-        self.response_buffer = buf.to_vec();
-        self.read_index = 0;
-        Ok(buf.len())
+    /// Write a [CommandResponse] to the response buffer.
+    /// This method does not take ownership of `response`.
+    pub fn write_response(&mut self, response: &CommandResponse) -> Result<usize, String> {
+        toml::to_string(response)
+            .map_err(|e| format!("Failed to encode SMCommand into string: {}", e))
+            .map(|s| { s.into_bytes() })
+            .and_then(|buf| {
+                self.write_bytes(&buf)
+            })
     }
 
-    /// Writes to the response buffer by appending bytes to the end of it.
-    pub fn append_response(&mut self, buf: &[u8]) -> Result<usize> {
-        self.response_buffer.append(&mut buf.to_vec());
+    /// Write bytes to the response buffer. If the response buffer has content already in it,
+    /// it will be overwritten.
+    fn write_bytes(&mut self, buf: &[u8]) -> Result<usize, String> {
+        self.response_buffer = buf.to_vec();
+        self.read_index = 0;
         Ok(buf.len())
     }
 }
