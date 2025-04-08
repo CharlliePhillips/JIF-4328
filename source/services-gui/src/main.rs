@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 
-use bstr::ByteSlice;
 use cosmic::app::{Core, Settings, Task};
 use cosmic::iced::Background;
 use cosmic::iced::Color;
