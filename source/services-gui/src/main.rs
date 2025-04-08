@@ -467,7 +467,7 @@ fn get_info(service: String) -> String {
         TOMLMessage::String(str) => {
             return str.to_string().clone();
         }
-        TOMLMessage::ServiceStats(_stats) => {
+        _ => {
             return "".to_string();
         }
     }

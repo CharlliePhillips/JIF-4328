@@ -243,7 +243,6 @@ pub struct ServiceDetailStats {
     pub running: bool,
 }
 
-
 /// Enum defining types of messages we may expect to get from a [CommandResponse]
 #[derive(Serialize, Deserialize)]
 pub enum TOMLMessage {
