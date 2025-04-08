@@ -196,6 +196,18 @@ pub struct ServiceRuntimeStats {
 
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct ServiceDetailStats {
+    pub name: String,
+    pub pid: usize,
+    pub time_init: i64,
+    pub time_started: i64,
+    pub time_now: i64,
+    pub message: String,
+    pub running: bool,
+
+}
+
 /// Enum defining types of messages we may expect to get from a [CommandResponse]
 #[derive(Serialize, Deserialize)]
 pub enum TOMLMessage {

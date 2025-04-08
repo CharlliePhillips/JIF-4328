@@ -57,6 +57,7 @@ fn main() {
         daemon
             .ready()
             .expect("service-monitor: failed to notify parent");
+        // TODO move dep loop here
         loop {
             eval_cmd(&mut services, &mut sm_scheme);
             // The following is for handling requests to the SM scheme
