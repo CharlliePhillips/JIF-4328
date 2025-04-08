@@ -38,6 +38,30 @@ pub enum SMCommand {
     }
 }
 
+impl std::fmt::Display for SMCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SMCommand::Start { service_name: _ } => write!(f, ""),
+            SMCommand::Stop { service_name: _ } => write!(f, ""),
+            SMCommand::List => write!(f, "list"),
+            SMCommand::Clear { service_name: _ } => write!(f, "clear"),
+            SMCommand::Info { service_name: _ } => write!(f, "info"),
+            SMCommand::Registry { subcommand } => write!(f, "registry {}", subcommand),
+        }
+    }
+}
+
+impl std::fmt::Display for RegistryCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RegistryCommand::Add { old: _, service_name: _, args: _, manual_override: _, depends: _, scheme_path: _ } => write!(f, "add"),
+            RegistryCommand::Remove { service_name: _ } => write!(f, "remove"),
+            RegistryCommand::View { service_name: _ } => write!(f, "view"),
+            RegistryCommand::Edit { old: _, service_name: _, edit_args: _, depends: _, scheme_path: _ } => write!(f, "edit"),
+        }
+    }
+}
+
 /// Registry subcommand used by the services command line to view/edit the registry
 #[derive(Subcommand, Serialize, Deserialize, Clone)]
 pub enum RegistryCommand {

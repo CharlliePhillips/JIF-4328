@@ -32,13 +32,13 @@ fn main() {
     File::write(sm_fd, &cmd_bytes).expect("Failed to write command to service monitor");
 
     // print_response(&cli.cmd, sm_fd);
-    let response: Vec<u8> = get_response(sm_fd);
-    if response.len() > 0 {
-        let s = std::str::from_utf8(&response)
+    let response_buf: Vec<u8> = get_response(sm_fd);
+    if response_buf.len() > 0 {
+        let s = std::str::from_utf8(&response_buf)
             .expect("Error parsing response to UTF8")
             .to_string();
         let response: CommandResponse = toml::from_str(&s).expect("Error parsing UTF8 to CommandResponse");
-        match response.message {
+        match &response.message {
             Some(TOMLMessage::String(str)) => {
                 println!("{str}");
             }
@@ -69,7 +69,14 @@ fn main() {
 
                 println!("{table_fmt}");
             }
-            _ => {}
+            _ => {
+                if response.status.success {
+                    println!("Command '{}' succeeded", response.status.command);
+                }
+                else {
+                    println!("Command '{}' failed", response.status.command);
+                }
+            }
         }
     }
 }
