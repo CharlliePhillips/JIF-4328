@@ -26,10 +26,10 @@ log = "0.4"
 open = "5.3.2"
 palette = { version = "0.7", features = ["serde"] }
 paste = "1.0"
-ron = "0.8"
+ron = "0.9"
 serde = { version = "1", features = ["serde_derive"] }
 shlex = "1"
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["sync", "process", "time"] }
 # Internationalization
 i18n-embed = { version = "0.15", features = [
     "fluent-system",
@@ -41,7 +41,7 @@ icu_provider = { version = "1.5", features = ["sync"] }
 rust-embed = "8"
 url = "2.5"
 # TODO: required by 1.80
-home = "=0.5.9"
+home = "=0.5.11"
 chrono = "*"
 shared = { version = "0.1.0", path = "../shared" }
 bstr = "1.11.3"
@@ -53,13 +53,13 @@ default-features = false
 features = [
     # "debug",
     "winit",
-    #"tokio",
+    "tokio",
     # "xdg-portal",
     # "dbus-config",
-    # "a11y",
+    "a11y",
     "wgpu",
     # "single-instance",
-    #"multi-window",
+    "multi-window",
 ]
 
 [target.'cfg(unix)'.dependencies]
@@ -68,5 +68,8 @@ fork = "0.2"
 [profile.release-with-debug]
 inherits = "release"
 debug = true
+
 [patch.crates-io]
 xdg-mime = { git = "https://github.com/ellieplayswow/xdg-mime-rs", branch = "feature/get-same-as" }
+onig = { git = "https://github.com/rust-onig/rust-onig.git", branch = "main" }
+onig_sys = { git = "https://github.com/rust-onig/rust-onig.git", branch = "main" }
