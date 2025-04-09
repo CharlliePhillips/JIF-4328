@@ -1,9 +1,10 @@
 use clap::Parser;
+use serde::de;
 use shared::{SMCommand, CommandResponse, TOMLMessage, get_response, format_uptime};
 use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
+    fmt::format, fs::{File, OpenOptions}, io::{Read, Write}
 };
+use chrono::prelude::*;
 use chrono::{self, Local, TimeZone};
 use comfy_table;
 
@@ -92,12 +93,14 @@ fn main() {
                 if detail.running {
                     service_row.push("Service:".to_string());
                     service_row.push(detail.name.clone());
+
                     uptime_row.push("Uptime:".to_string());
                     uptime_row.push(format_uptime(detail.time_init, detail.time_now));
                     init_row.push("Time to init:".to_string());
                     init_row.push(format_uptime(detail.time_started, detail.time_init));
                     message_row.push("Message:".to_string());
                     message_row.push(detail.message.clone());
+
                     rows1.push(service_row);
                     rows1.push(uptime_row);
                     rows1.push(init_row);
@@ -145,6 +148,7 @@ fn main() {
                     service_row.push(detail.name.clone());
                     message_row.push("Message:".to_string());
                     message_row.push(detail.message.clone());
+
                     rows1.push(service_row);
                     rows1.push(message_row);
 

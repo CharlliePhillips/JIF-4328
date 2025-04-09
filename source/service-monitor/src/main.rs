@@ -10,6 +10,7 @@ use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{RequestKind, SignalBehavior, Socket};
 use scheme::SMScheme;
 use shared::{CommandResponse, RegistryCommand, SMCommand, ServiceDetailStats, ServiceRuntimeStats, TOMLMessage};
+
 use std::{
     str,
     sync::mpsc,
