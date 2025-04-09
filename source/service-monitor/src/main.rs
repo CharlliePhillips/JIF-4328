@@ -156,6 +156,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
                 warn!("info failed: no service named '{}'", name);
             }
         }
+        // todo: add command responses to all registry subcommands
         Some(SMCommand::Registry { subcommand }) => match subcommand {
             RegistryCommand::View { service_name } => {
                 let service_string = view_entry(service_name);
@@ -303,7 +304,6 @@ fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     }
 }
 
-// TODO: add command responses to each condition
 fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     // can add args here later with '.arg()'
     if !service.running {
@@ -312,9 +312,18 @@ fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
                 //service.pid = child.id().try_into().unwrap();
                 //service.pid += 2;
                 service.time_started = Local::now().timestamp_millis(); // where should this go for the start command?
+                // ? what is this waiting on exactly?
                 match child.wait() {
                     Ok(_ext) => {}
                     Err(_) => {
+                        // ? couldn't this happen at any point if the service straight up crashes? this may be unrelated to start... need to clarify
+                        let _ = sm_scheme.write_response(
+                            &CommandResponse::new(
+                                sm_scheme.cmd.as_ref().unwrap(),
+                                false,
+                                Some(TOMLMessage::String(format!("Unable to start '{}': Process exited with failure code", service.config.name)))
+                            )
+                        );
                         error!("{} failed to start!", service.config.name);
                         return;
                     }
@@ -323,6 +332,15 @@ fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
                     match libredox::call::open(service.config.scheme_path.clone(), O_RDWR, 1) {
                         Ok(fd) => fd,
                         Err(_) => {
+                            // ? if this occurs, is it possible the child process still be running in the background?
+                            // ? or is this a guarantee that the process crashed?
+                            let _ = sm_scheme.write_response(
+                                &CommandResponse::new(
+                                    sm_scheme.cmd.as_ref().unwrap(),
+                                    false,
+                                    Some(TOMLMessage::String(format!("Unable to start '{}': Failed to open scheme at '{}'", service.config.name, service.config.scheme_path)))
+                                )
+                            );
                             error!("failed to open service scheme!");
                             return;
                         }
@@ -330,6 +348,13 @@ fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
                 let pid_scheme = match libredox::call::dup(child_scheme, b"pid") {
                     Ok(pid_fd) => pid_fd,
                     Err(_) => {
+                        let _ = sm_scheme.write_response(
+                            &CommandResponse::new(
+                                sm_scheme.cmd.as_ref().unwrap(),
+                                false,
+                                Some(TOMLMessage::String(format!("Unable to start '{}': Failed to dup service pid scheme", service.config.name)))
+                            )
+                        );
                         error!("failed to dup service pid scheme!");
                         return;
                     }
@@ -338,6 +363,13 @@ fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
                 match libredox::call::read(pid_scheme, read_buffer) {
                     Ok(_usize) => {}
                     Err(_) => {
+                        let _ = sm_scheme.write_response(
+                            &CommandResponse::new(
+                                sm_scheme.cmd.as_ref().unwrap(),
+                                false,
+                                Some(TOMLMessage::String(format!("Unable to start '{}': Failed to read pid from service", service.config.name)))
+                            )
+                        );
                         error!("could not read pid from service!");
                     }
                 }
@@ -352,9 +384,24 @@ fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
                 service.pid = pid;
                 info!("child started with pid: {:#?}", service.pid);
                 service.running = true;
+
+                let _ = sm_scheme.write_response(
+                    &CommandResponse::new(
+                        sm_scheme.cmd.as_ref().unwrap(),
+                        true,
+                        Some(TOMLMessage::String(format!("Started '{}' with pid {:#?}", service.config.name, service.pid)))
+                    )
+                );
             }
 
             Err(_e) => {
+                let _ = sm_scheme.write_response(
+                    &CommandResponse::new(
+                        sm_scheme.cmd.as_ref().unwrap(),
+                        false,
+                        Some(TOMLMessage::String(format!("Unable to start '{}': Failed to locate executable", service.config.name)))
+                    )
+                );
                 warn!("start failed: could not start {}", service.config.name);
             }
         };
@@ -552,9 +599,21 @@ fn clear(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
         service.dup_count = 0;
         service.error_count = 0;
 
-        // TODO: write "clear successful" to output
+        let _ = sm_scheme.write_response(
+            &CommandResponse::new(
+                sm_scheme.cmd.as_ref().unwrap(),
+                true,
+                None,
+            )
+        );
     } else {
-        // TODO: write "clear unsuccessful" to output
+        let _ = sm_scheme.write_response(
+            &CommandResponse::new(
+                sm_scheme.cmd.as_ref().unwrap(),
+                false,
+                Some(TOMLMessage::String(format!("Failed to clear '{}'; service is not running", service.config.name))),
+            )
+        );
         warn!("Attempted to clear '{}' which is not running!", service.config.name);
     }
 }
