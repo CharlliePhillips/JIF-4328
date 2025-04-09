@@ -35,20 +35,20 @@ fn main() {
         .enable();
     info!("service-monitor logger started");
 
-    // make list of managed services
-    let mut services: HashMap<String, ServiceEntry> = read_registry();
-
-    // start dependencies
-    for service in services.values_mut() {
-        start(service, None);
-    }
-
     redox_daemon::Daemon::new(move |daemon| {
         let name = "service-monitor";
         let socket =
             Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
         let mut sm_scheme = SMScheme::new();
+
+        // make list of managed services
+        let mut services: HashMap<String, ServiceEntry> = read_registry();
+
+        // start dependencies
+        for service in services.values_mut() {
+            start(service, &mut sm_scheme);
+        }
 
         info!(
             "service-monitor daemonized with pid: {}",
@@ -110,7 +110,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         Some(SMCommand::Start { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 //info!("Starting '{}'", service.config.name);
-                start(service, Some(sm_scheme));
+                start(service, sm_scheme);
             } else {
                 let name = service_name.clone();
                 let _ = sm_scheme.write_response(
@@ -127,7 +127,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         Some(SMCommand::Clear { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 //info!("Clearing short-term stats for '{}'", service.config.name);
-                clear(service);
+                clear(service, sm_scheme);
             } else {
                 let name = service_name.clone();
                 let _ = sm_scheme.write_response(
@@ -287,7 +287,7 @@ fn update_service_info(service: &mut ServiceEntry) {
 fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     let _ = sm_scheme;
     if service.running {
-        clear(service);
+        clear(service, sm_scheme);
         info!("trying to kill pid {}", service.pid);
         let _kill_ret = syscall::call::kill(service.pid, syscall::SIGKILL);
         service.running = false;
@@ -304,7 +304,7 @@ fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
 }
 
 // TODO: add command responses to each condition
-fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
+fn start(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     // can add args here later with '.arg()'
     if !service.running {
         match std::process::Command::new(service.config.name.as_str()).spawn() {
@@ -359,15 +359,14 @@ fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
             }
         };
     } else {
-        if let Some(sm_scheme) = sm_scheme {
-            let _ = sm_scheme.write_response(
-                &CommandResponse::new(
-                    sm_scheme.cmd.as_ref().unwrap(),
-                    false,
-                    Some(TOMLMessage::String(format!("Unable to start '{}': Already running", service.config.name)))
-                )
-            );
-        }
+        let _ = sm_scheme.write_response(
+            &CommandResponse::new(
+                sm_scheme.cmd.as_ref().unwrap(),
+                false,
+                Some(TOMLMessage::String(format!("Unable to start '{}': Already running", service.config.name)))
+            )
+        );
+        
         warn!("service: '{}' is already running", service.config.name);
         //test_service_data(service);
         if &service.config.name == "gtrand2" {
@@ -516,7 +515,7 @@ fn time_string(start_time: i64, end_time: i64) -> String {
     parts.join(", ")
 }
 
-fn clear(service: &mut ServiceEntry) {
+fn clear(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
     if service.running {
         // read the requests into a buffer
         let read_buffer: &mut [u8] = &mut [b'0'; 48];
