@@ -9,7 +9,7 @@ use log::{error, info, warn};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{RequestKind, SignalBehavior, Socket};
 use scheme::SMScheme;
-use shared::{CommandResponse, RegistryCommand, SMCommand, ServiceRuntimeStats, TOMLMessage};
+use shared::{CommandResponse, RegistryCommand, SMCommand, ServiceRuntimeStats, ServiceDetailStats, TOMLMessage};
 use std::{
     str,
     sync::mpsc,
@@ -385,82 +385,62 @@ fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
 }
 
 fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
-    if service.running {
+    let stats = if service.running {
         update_service_info(service);
-
-        // set up time strings
-        let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
-        let time_init_string = time_string(service.time_started, service.time_init);
-        // info!(
-        //     "~sm time started registered versus time initialized: {}, {}",
-        //     service.time_started, service.time_init
-        // );
-
-        // set up the info string
-        let info_string = format!(
-            "Service: {} \nUptime: {} \nLast time to initialize: {} \n\
-                Live READ count: {}, Total: {} \n\
-                Live WRITE count: {}, Total: {}\n\
-                Live OPEN count: {}, Total: {} \n\
-                Live CLOSE count: {}, Total: {} \n\
-                Live DUP count: {}, Total: {} \n\
-                Live ERROR count: {}, Total: {} \n\
-                Message: \"{}\" ",
-            service.config.name,
-            uptime_string,
-            time_init_string,
-            service.read_count,
-            service.total_reads + service.read_count,
-            service.write_count,
-            service.total_writes + service.write_count,
-            service.open_count,
-            service.total_opens + service.open_count,
-            service.close_count,
-            service.total_closes + service.close_count,
-            service.dup_count,
-            service.total_dups + service.dup_count,
-            service.error_count,
-            service.total_errors + service.error_count,
-            service.message
-        );
-        //info!("~sm info string: {:#?}", info_string);
-
-        // set the info buffer to the formatted info string
-        let _ = sm_scheme.write_response(
-            &CommandResponse::new(
-                sm_scheme.cmd.as_ref().unwrap(),
-                true,
-                Some(TOMLMessage::String(info_string))
-            )
-        );
+        TOMLMessage::ServiceDetail( 
+            ServiceDetailStats {
+                name: service.config.name.clone(),
+                pid: service.pid,
+                time_init: service.time_init,
+                time_started: service.time_started,
+                time_now: Local::now().timestamp_millis(),
+                read_count: service.read_count,
+                total_reads: service.total_reads + service.read_count,
+                write_count: service.write_count,
+                total_writes: service.total_writes + service.write_count,
+                open_count: service.open_count,
+                total_opens: service.total_opens + service.open_count,
+                close_count: service.close_count,
+                total_closes: service.total_closes + service.close_count,
+                dup_count: service.dup_count,
+                total_dups: service.total_dups + service.dup_count,
+                error_count: service.error_count,
+                total_errors: service.total_errors + service.error_count,
+                message: service.message.clone(),
+                running: service.running,
+            }
+        )
     } else {
-        let info_string = format!(
-            "Service: {} is STOPPED\n\
-            Total READ count: {}\n\
-            Total WRITE count: {}\n\
-            Total OPEN count: {}\n\
-            Total CLOSE count: {}\n\
-            Total DUP count: {}\n\
-            Total ERROR count: {}\n\
-            Last message: \"{}\"",
-            service.config.name,
-            service.total_reads,
-            service.total_writes,
-            service.total_opens,
-            service.total_closes,
-            service.total_dups,
-            service.total_errors,
-            service.message
+        TOMLMessage::ServiceDetail( 
+            ServiceDetailStats {
+                name: service.config.name.clone(),
+                pid: service.pid,
+                time_init: service.time_init,
+                time_started: service.time_started,
+                time_now: Local::now().timestamp_millis(),
+                read_count: 0,
+                total_reads: service.total_reads + service.read_count,
+                write_count: 0,
+                total_writes: service.total_writes + service.write_count,
+                open_count: 0,
+                total_opens: service.total_opens + service.open_count,
+                close_count: 0,
+                total_closes: service.total_closes + service.close_count,
+                dup_count: 0,
+                total_dups: service.total_dups + service.dup_count,
+                error_count: 0,
+                total_errors: service.total_errors + service.error_count,
+                message: service.message.clone(),
+                running: service.running,
+            }
+        )
+    };
+    let _ = sm_scheme.write_response(
+        &CommandResponse::new(
+            sm_scheme.cmd.as_ref().unwrap(),
+            true,
+            Some(stats))
         );
-        // set the info buffer to the formatted info string
-        let _ = sm_scheme.write_response(
-            &CommandResponse::new(
-                sm_scheme.cmd.as_ref().unwrap(),
-                true,
-                Some(TOMLMessage::String(info_string))
-            )
-        );
-    }
 }
 
 fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
@@ -489,32 +469,6 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSchem
             Some(TOMLMessage::ServiceStats(service_stats))
         )
     );
-}
-
-// function that takes a time difference and returns a string of the time in hours, minutes, and seconds
-fn time_string(start_time: i64, end_time: i64) -> String {
-    let start = Local.timestamp_millis_opt(start_time).unwrap();
-    let end = Local.timestamp_millis_opt(end_time).unwrap();
-
-    let duration = end.signed_duration_since(start);
-
-    let hours = duration.num_hours();
-    let minutes = duration.num_minutes() % 60;
-    let seconds = duration.num_seconds() % 60;
-    let millisecs = duration.num_milliseconds() % 1000;
-    let seconds_with_millis = format!("{:02}.{:03}", seconds, millisecs);
-
-    let mut parts = Vec::new();
-
-    if hours > 0 {
-        parts.push(format!("{} hours", hours));
-    }
-    if minutes > 0 {
-        parts.push(format!("{} minutes", minutes));
-    }
-    parts.push(format!("{} seconds", seconds_with_millis));
-
-    parts.join(", ")
 }
 
 fn clear(service: &mut ServiceEntry) {

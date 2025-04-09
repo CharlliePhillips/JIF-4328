@@ -3,20 +3,26 @@
 
 //! Table API example
 
+use std::borrow::{BorrowMut, Cow};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+use std::sync::Arc;
 
 use cosmic::app::{Core, Settings, Task};
-use cosmic::iced::Background;
+use cosmic::cosmic_theme::ThemeBuilder;
+use cosmic::iced::window::close;
+use cosmic::iced::{time, Background, Border};
 use cosmic::iced::Color;
 use cosmic::iced::widget::{column, row};
 use cosmic::iced_core::{Element, Size};
+use cosmic::iced_widget::{Column, Row};
 use cosmic::prelude::*;
-use cosmic::widget::{table, Column};
+use cosmic::widget::{table, Container, Text};
 use cosmic::widget::{self, nav_bar};
 use cosmic::{executor, iced};
-use shared::{format_uptime, get_response, SMCommand, TOMLMessage};
+use shared::{format_uptime, get_response, CommandResponse, SMCommand, TOMLMessage};
+use tracing_subscriber::registry::Data;
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Category {
@@ -256,7 +262,7 @@ impl cosmic::Application for App {
                 // by default start & stop buttons do nothing
                 let mut start_msg = Message::NoOp;
                 let mut stop_msg = Message::NoOp;
-                let mut info_text: String = "".to_string();
+                let mut info_tbl: Option<Container<'_, Message, Theme>> = None;
                 match self.table_model.item(self.table_model.active()) {
                     Some(selected) => {
                         // if some item is selected then start and stop should operate on that
@@ -264,7 +270,7 @@ impl cosmic::Application for App {
                         stop_msg = Message::Stop(selected.name.clone());
                         // TODO: this is probably where service info column should be built
                         // also update when TOML refactor is ready
-                        info_text = get_info(selected.name.clone());
+                        info_tbl = get_info(selected.name.clone());
                     },
                     None => {}
                 }
@@ -279,8 +285,7 @@ impl cosmic::Application for App {
                 .align_y(iced::Alignment::Center);
 
                 let centered = cosmic::widget::container(
-                    column![
-                        button_row,
+
                         cosmic::widget::responsive(|size| {
                             if size.width < 600.0 {
                                 widget::compact_table(&self.table_model)
@@ -333,35 +338,39 @@ impl cosmic::Application for App {
                                     .apply(Element::from)
                             }
                         })
-                    ]
-                    .spacing(cosmic::theme::spacing().space_s)
-                    .width(iced::Length::Fill)
-                    .align_x(iced::Alignment::Center),
                 )
                 .width(iced::Length::Fill)
                 .height(iced::Length::Shrink)
                 .align_x(iced::Alignment::Center)
                 .align_y(iced::Alignment::Center);
-                let body = if info_text != "" {
-                    cosmic::widget::container(
-                        row![
-                            centered,
-                            cosmic::widget::container(
-                                cosmic::widget::text(info_text)
-                            )
-                            .style(|_theme| {
-                                //TODO: theme this color
-                                widget::container::Style {
-                                    background: Some(Background::Color(Color::from_rgba8(
-                                        0x40, 0x00, 0x00, 0.5
-                                    ))),
-                                    ..Default::default()
-                                }
-                            })
-                        ]
-                    )
-                } else {
-                    centered
+                let body = match info_tbl {
+                    Some(tbl) => {
+                        cosmic::widget::container(
+                            column![
+                            button_row,
+                                row![
+                                    centered,
+                                    tbl,
+                                ]
+                            ]
+                            .spacing(cosmic::theme::spacing().space_s)
+                            .width(iced::Length::Fill)
+                            .height(iced::Length::Fill)
+                            .align_x(iced::Alignment::Center)
+                        )
+                    }
+                    _ => {
+                        cosmic::widget::container(
+                            column![
+                                button_row,
+                                centered,
+                            ]
+                            .spacing(cosmic::theme::spacing().space_s)
+                            .width(iced::Length::Fill)
+                            .height(iced::Length::Fill)
+                            .align_x(iced::Alignment::Center)
+                        )
+                    }
                 };
                 Element::from(body)
             }
@@ -416,11 +425,12 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
     let response_string = std::str::from_utf8(&response_buffer)
         .expect("Error parsing response to UTF8")
         .to_string();
-    let msg: TOMLMessage = toml::from_str(&response_string).expect("Error parsing UTF8 to TOMLMessage");
+    let response: CommandResponse = toml::from_str(&response_string)
+        .expect("Error parsing CommandResponse!");
+    //let msg: TOMLMessage = toml::from_str(&response_string).expect("Error parsing UTF8 to TOMLMessage");
 
-    match &msg {
-        TOMLMessage::String(_str) => {}
-        TOMLMessage::ServiceStats(stats) => {
+    match response.message {
+        Some(TOMLMessage::ServiceStats(stats)) => {
             for s in stats {
                 if s.running {
                     let _ = table_model.insert(Item {
@@ -439,12 +449,13 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
                 }
             }
         }
+        _ => {}
     }
 }
 
 // TODO maybe this should build the whole compontent for the view function instead of just getting the string
 // Either way needs TOML updates
-fn get_info(service: String) -> String {
+fn get_info(service: String) -> Option<Container<'static, Message, Theme>> {
     let info_cmd = SMCommand::Info { service_name: service }.encode().unwrap();
 
     let Ok(sm_fd) = &mut OpenOptions::new()
@@ -459,16 +470,130 @@ fn get_info(service: String) -> String {
     let response_string = std::str::from_utf8(&response_buffer)
         .expect("Error parsing response to UTF8")
         .to_string();
-    let msg: TOMLMessage = toml::from_str(&response_string).expect("Error parsing UTF8 to TOMLMessage");
+    let response: CommandResponse = toml::from_str(&response_string)
+        .expect("Error parsing CommandResponse!");
+    //let msg: TOMLMessage = toml::from_str(&response_string).expect("Error parsing UTF8 to TOMLMessage");
 
-    match &msg {
-        TOMLMessage::String(str) => {
-            return str.to_string().clone();
+    match response.message {
+        Some(TOMLMessage::ServiceDetail(service)) => {
+            let uptime_string = format_uptime(service.time_init, service.time_now);
+            let time_init_string = format_uptime(service.time_started, service.time_init);
+            format!(
+                "Service: {} \nUptime: {} \nLast time to initialize: {} \n\
+                    Live READ count: {}, Total: {} \n\
+                    Live WRITE count: {}, Total: {}\n\
+                    Live OPEN count: {}, Total: {} \n\
+                    Live CLOSE count: {}, Total: {} \n\
+                    Live DUP count: {}, Total: {} \n\
+                    Live ERROR count: {}, Total: {} \n\
+                    Message: \"{}\" ",
+                service.name,
+                uptime_string,
+                time_init_string,
+                service.read_count,
+                service.total_reads + service.read_count,
+                service.write_count,
+                service.total_writes + service.write_count,
+                service.open_count,
+                service.total_opens + service.open_count,
+                service.close_count,
+                service.total_closes + service.close_count,
+                service.dup_count,
+                service.total_dups + service.dup_count,
+                service.error_count,
+                service.total_errors + service.error_count,
+                service.message
+            ).to_string();
+
+            let mut column: Column<'static, Message, Theme, Renderer> = Column::new();
+            //let mut rows: [Element<'static, Message, Theme, Renderer>>; 4] = [];
+
+            let name_text: Vec<String> = ["Name:".to_string(), service.name.clone()].to_vec();
+            column = column.push(get_detail_row(name_text));
+            let uptime_text: Vec<String> = ["Uptime:".to_string(), uptime_string.clone()].to_vec();
+            column = column.push(get_detail_row(uptime_text));
+            let time_init_text: Vec<String> = ["Time to init:".to_string(), time_init_string.clone()].to_vec();
+            column = column.push(get_detail_row(time_init_text));
+            let message_text: Vec<String> = ["Message:".to_string(), service.message.clone()].to_vec(); 
+            column = column.push(get_detail_row(message_text));
+            let read_text: Vec<String> = ["Live READ count:".to_string(), format!("{}", service.read_count), "total:".to_string(), format!("{}", service.read_count + service.total_reads)].to_vec();
+            column = column.push(get_detail_row(read_text));
+            let write_text: Vec<String> = ["Live WRITE count:".to_string(), format!("{}", service.write_count), "total:".to_string(), format!("{}", service.write_count + service.total_writes)].to_vec();
+            column = column.push(get_detail_row(write_text));
+            let open_text: Vec<String> = ["Live OPEN count:".to_string(), format!("{}", service.open_count), "total:".to_string(), format!("{}", service.open_count + service.total_opens)].to_vec();
+            column = column.push(get_detail_row(open_text));
+            let close_text: Vec<String> = ["Live CLOSE count:".to_string(), format!("{}", service.close_count), "total:".to_string(), format!("{}", service.write_count + service.total_closes)].to_vec();
+            column = column.push(get_detail_row(close_text));
+            let dup_text: Vec<String> = ["Live DUP count:".to_string(), format!("{}", service.dup_count), "total:".to_string(), format!("{}", service.dup_count+ service.total_dups)].to_vec(); 
+            column = column.push(get_detail_row(dup_text));
+            let error_text: Vec<String> = ["Live DUP count:".to_string(), format!("{}", service.error_count), "total:".to_string(), format!("{}", service.error_count+ service.total_errors)].to_vec(); 
+            column = column.push(get_detail_row(error_text));
+
+            Some(
+                cosmic::widget::container(
+                    column,
+                )
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .style(|_theme| {
+                    //TODO: theme this color
+                    widget::container::Style {
+                        background: Some(Background::Color(Color::from_rgba8(
+                            0x40, 0x40, 0x40, 0.5
+                        ))),
+                        //border: Border::default().color(Color::WHITE).width(1),
+                        ..Default::default()
+                    }
+                })
+                .into()
+            )
         }
-        TOMLMessage::ServiceStats(_stats) => {
-            return "".to_string();
-        }
+        _ => {None}
     }
+}
+
+fn get_detail_row(strings: Vec<String>) -> Row<'static, Message, Theme, Renderer>{
+    let mut row: Row<'static, Message, Theme, Renderer> = Row::new();
+    // let static_strings: Vec<String> = strings.clone();
+    for (i, string) in strings.iter().enumerate() {
+        if i % 2 == 0 {
+            let title: Container<'static, Message, Theme> = cosmic::widget::container(
+        cosmic::widget::text(format!(" {}", string.clone())),
+            )
+            .width(iced::Length::Fill)
+            .height(iced::Length::Shrink)
+            .style(|_theme| {
+                //TODO: theme this color
+                widget::container::Style {
+                    background: Some(Background::Color(Color::from_rgba8(
+                        0x00, 0x00, 0x00, 0.5
+                    ))),
+                    border: Border::default().color(Color::WHITE).width(1),
+                    text_color: Some(Color::WHITE),
+                    ..Default::default()
+                }
+            });
+            row = row.push(title);
+        } else {
+            let data: Container<'static, Message, Theme> = cosmic::widget::container(
+                cosmic::widget::text(format!(" {}", string.clone())),
+            )
+            .width(iced::Length::Fill)
+            .height(iced::Length::Shrink)
+            .style(|_theme| {
+                //TODO: theme this color
+                widget::container::Style {
+                    background: Some(Background::Color(Color::from_rgba8(
+                        0x40, 0x40, 0x44, 0.5
+                    ))),
+                    border: Border::default().color(Color::WHITE).width(1),
+                    ..Default::default()
+                }
+            });
+            row = row.push(data);
+        }
+    } 
+    return row;
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
