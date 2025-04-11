@@ -227,16 +227,29 @@ pub struct ServiceDetailStats {
     pub time_init: i64,
     pub time_started: i64,
     pub time_now: i64,
+    pub read_count: u64,
+    pub write_count: u64,
+    pub open_count: u64,
+    pub close_count: u64,
+    pub dup_count: u64,
+    pub error_count: u64,
+    pub total_reads: u64,
+    pub total_writes: u64,
+    pub total_opens: u64,
+    pub total_closes: u64,
+    pub total_dups: u64,
+    pub total_errors: u64,
     pub message: String,
     pub running: bool,
-
 }
+
 
 /// Enum defining types of messages we may expect to get from a [CommandResponse]
 #[derive(Serialize, Deserialize)]
 pub enum TOMLMessage {
     String(String),
     ServiceStats(Vec<ServiceRuntimeStats>),
+    ServiceDetail(ServiceDetailStats),
 }
 
 /// Reads the command responsed buffer from the service-monitor's scheme.
