@@ -1,6 +1,7 @@
 use hashbrown::HashMap;
 use log::warn;
 use serde::{Deserialize, Serialize};
+use shared::{TOMLMessage};
 use std::{fs::File, io::Read, io::Write, path::Path};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -95,6 +96,7 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
     return services;
 }
 
+// todo: avoid panics: -> Result<Some<TOMLMessage>, Some<TOMLMessage>>
 pub fn write_registry(registry: HashMap<String, ServiceEntry>) {
     let path: &Path = Path::new("/usr/share/smregistry.toml"); //same as read_registry, this filepath is temporary.
     let mut file = match File::create(&path) {
@@ -117,16 +119,16 @@ pub fn write_registry(registry: HashMap<String, ServiceEntry>) {
     };
 }
 
-pub fn view_entry(name: &str) -> String {
+pub fn view_entry(name: &str) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     let services = read_registry();
     if let Some(entry) = services.get(name) {
         let entry_string = format!(
             "Service Name: {} \nType: {} \nArgs: {:?} \nManual Override: {} \nDepends: {:?} \nScheme Path: {}",
             entry.config.name, entry.config.r#type, entry.config.args, entry.config.manual_override, entry.config.depends, entry.config.scheme_path
         );
-        return entry_string;
+        Ok(Some(TOMLMessage::String(entry_string)))
     } else {
-        return String::from("Service not found in registry");
+        Err(Some(TOMLMessage::String(String::from("Service not found in registry"))))
     }
 }
 
@@ -137,7 +139,7 @@ pub fn add_entry(
     manual_override: bool,
     scheme_path: &str,
     depends: &Vec<String>,
-) {
+) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     let mut services = read_registry();
     let new_entry = ServiceEntry {
         config: Service {
@@ -169,15 +171,19 @@ pub fn add_entry(
     };
     services.insert(name.to_string(), new_entry);
     write_registry(services);
+
+    Ok(Some(TOMLMessage::String(format!("Successfully added service '{}' to registry", name))))
 }
 
-pub fn rm_entry(name: &str) {
+pub fn rm_entry(name: &str) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     let mut services = read_registry();
     if let Some(_entry) = services.get(name) {
         services.remove(name);
         write_registry(services);
+        Ok(Some(TOMLMessage::String(format!("Successfully removed service '{}' from registry", name))))
     } else {
         //println!("Service not found in registry");
+        Err(Some(TOMLMessage::String(format!("Unable to remove '{}' from registry: service not found", name))))
     }
 }
 
@@ -187,7 +193,7 @@ pub fn edit_entry(
     edit_args: &Vec<String>,
     scheme_path: &str,
     depends: &Vec<String>,
-) {
+) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     let mut services = read_registry();
     if let Some(entry) = services.get_mut(name) {
         if entry.running {
@@ -215,8 +221,10 @@ pub fn edit_entry(
         }
 
         write_registry(services);
+        Ok(Some(TOMLMessage::String(format!("Successfully edited service '{}' in registry", name))))
     } else {
         //println!("Service not found in registry\nRegistry edit failed");
+        Err(Some(TOMLMessage::String(format!("Unable to edit '{}' in registry: service not found", name))))
     }
 }
 
@@ -227,7 +235,7 @@ pub fn edit_hash_entry(
     edit_args: &Vec<String>,
     scheme_path: &str,
     depends: &Vec<String>,
-) {
+) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     if services.contains_key(name) {
         let entry = services.get_mut(name).unwrap();
 
@@ -273,25 +281,34 @@ pub fn edit_hash_entry(
         };
 
         services.insert(name.to_string(), new_entry);
+
+        // ! temp
+        Ok(Some(TOMLMessage::String(format!("Successfully edited service '{}' in internal list", name))))
     } else {
         //println!("Unable to edit Service Entry that is not present in internal list");
+        Err(Some(TOMLMessage::String(format!("Unable to edit '{}' in internal list: service not found", name))))
     }
 }
 
-pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: &str) {
+pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: &str) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     let services_toml = read_registry();
     if let Some(_entry) = services_toml.get(name) {
+        Err(Some(TOMLMessage::String(format!("Unable to remove '{}' from internal list; service is still present in the registry", name))))
         //println!("Service is still present in registry, unable to remove from internal list");
     } else {
         if services.contains_key(name) {
             let entry = services.get(name).unwrap();
             if entry.running {
+                // todo: msg: "Running service has been removed from the registry. It will be removed from the internal list when the service is stopped."
+                Err(Some(TOMLMessage::String(format!("Unable to remove '{}' from internal list; service is still running", name))))
                 //println!("Cannot remove an entry that is currently running");
             } else {
                 services.remove(name);
+                Ok(Some(TOMLMessage::String(format!("Removed '{}' from internal list", name))))
                 //println!("Removing service from internal list");
             }
         } else {
+            Err(Some(TOMLMessage::String(format!("Unable to remove '{}' from internal list; service not found", name))))
             //println!("Cannot find entry in internal list to remove");
         }
     }
@@ -305,8 +322,9 @@ pub fn add_hash_entry(
     scheme_path: &str,
     depends: &Vec<String>,
     services: &mut HashMap<String, ServiceEntry>,
-) {
+) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     if services.contains_key(name) {
+        Err(Some(TOMLMessage::String(format!("Unable to add '{}' to internal list: service already present", name))))
         //println!("Cannot add entry that is already present in internal list");
     } else {
         let new_entry = ServiceEntry {
@@ -338,6 +356,7 @@ pub fn add_hash_entry(
             message: String::new(),
         };
         services.insert(name.to_string(), new_entry);
+        Ok(Some(TOMLMessage::String(format!("Successfully added service '{}' to internal list", name))))
     }
 }
 //add old, add new, rm, view
