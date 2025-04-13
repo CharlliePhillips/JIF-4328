@@ -415,7 +415,6 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
         Category::Uptime,
         Category::Msg,
     ]);
-    table_model.activate(active);
 
     let list_cmd = SMCommand::List.encode().unwrap();
 
@@ -456,6 +455,7 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
         }
         _ => {}
     }
+    table_model.activate(active);
 }
 
 // TODO maybe this should build the whole compontent for the view function instead of just getting the string
