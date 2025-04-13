@@ -18,7 +18,7 @@ use cosmic::iced::widget::{column, row};
 use cosmic::iced_core::{Element, Size};
 use cosmic::iced_widget::{Column, Row};
 use cosmic::prelude::*;
-use cosmic::widget::{table, Container, Text};
+use cosmic::widget::{table, table::Entity, Container, Text};
 use cosmic::widget::{self, nav_bar};
 use cosmic::{executor, iced};
 use shared::{format_uptime, get_response, CommandResponse, SMCommand, TOMLMessage};
@@ -137,6 +137,7 @@ pub enum Message {
     CategorySelect(Category),
     PrintMsg(String),
     Refresh,
+    Detail,
     Start(String),
     Stop(String),
     ToPrimary,
@@ -155,6 +156,8 @@ pub struct App {
     table_model: table::SingleSelectModel<Item, Category>,
     selected: Option<String>,
     screen: Screen,
+    info_table: bool,
+    //info_table: Option<Container<'static, Message, Theme>>,
 }
 
 /// Implement [`cosmic::Application`] to integrate with COSMIC.
@@ -194,7 +197,7 @@ impl cosmic::Application for App {
 
         get_services(&mut table_model);
         let screen: Screen = Screen::Primary;
-        let app = App { core, table_model, selected: None, screen};
+        let app = App { core, table_model, selected: None, screen, info_table: false};
 
         let command = Task::none();
 
@@ -217,9 +220,9 @@ impl cosmic::Application for App {
                 self.table_model.sort(category, ascending)
             }
             Message::PrintMsg(string) => tracing_log::log::info!("{}", string),
-            Message::Refresh => {
-                get_services(&mut self.table_model);
-                self.selected = None;
+            Message::Refresh => {}
+            Message::Detail => {
+                self.info_table = !self.info_table;
             }
             Message::Start(service_name) => {
                 if let Ok(mut sm_fd) = OpenOptions::new()
@@ -268,9 +271,9 @@ impl cosmic::Application for App {
                         // if some item is selected then start and stop should operate on that
                         start_msg = Message::Start(selected.name.clone());
                         stop_msg = Message::Stop(selected.name.clone());
-                        // TODO: this is probably where service info column should be built
-                        // also update when TOML refactor is ready
-                        info_tbl = get_info(selected.name.clone());
+                        if self.info_table {
+                            info_tbl = get_info(selected.name.clone());
+                        }
                     },
                     None => {}
                 }
@@ -279,7 +282,7 @@ impl cosmic::Application for App {
                     cosmic::widget::button::text("Help").on_press(Message::ToDoc),
                     cosmic::widget::button::text("Start").on_press(start_msg),
                     cosmic::widget::button::text("Stop").on_press(stop_msg),
-                    cosmic::widget::button::text("Refresh").on_press(Message::Refresh),
+                    cosmic::widget::button::text("Info").on_press(Message::Detail),
                 ]
                 .spacing(cosmic::theme::spacing().space_s)
                 .align_y(iced::Alignment::Center);
@@ -405,12 +408,15 @@ impl cosmic::Application for App {
 }
 
 fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
+    let active: Entity = table_model.active();
     *table_model = table::Model::new(vec![
         Category::Name,
         Category::Pid,
         Category::Uptime,
         Category::Msg,
     ]);
+    table_model.activate(active);
+
     let list_cmd = SMCommand::List.encode().unwrap();
 
     let Ok(sm_fd) = &mut OpenOptions::new()
@@ -476,77 +482,68 @@ fn get_info(service: String) -> Option<Container<'static, Message, Theme>> {
 
     match response.message {
         Some(TOMLMessage::ServiceDetail(service)) => {
-            let uptime_string = format_uptime(service.time_init, service.time_now);
-            let time_init_string = format_uptime(service.time_started, service.time_init);
-            format!(
-                "Service: {} \nUptime: {} \nLast time to initialize: {} \n\
-                    Live READ count: {}, Total: {} \n\
-                    Live WRITE count: {}, Total: {}\n\
-                    Live OPEN count: {}, Total: {} \n\
-                    Live CLOSE count: {}, Total: {} \n\
-                    Live DUP count: {}, Total: {} \n\
-                    Live ERROR count: {}, Total: {} \n\
-                    Message: \"{}\" ",
-                service.name,
-                uptime_string,
-                time_init_string,
-                service.read_count,
-                service.total_reads + service.read_count,
-                service.write_count,
-                service.total_writes + service.write_count,
-                service.open_count,
-                service.total_opens + service.open_count,
-                service.close_count,
-                service.total_closes + service.close_count,
-                service.dup_count,
-                service.total_dups + service.dup_count,
-                service.error_count,
-                service.total_errors + service.error_count,
-                service.message
-            ).to_string();
-
             let mut column: Column<'static, Message, Theme, Renderer> = Column::new();
-            //let mut rows: [Element<'static, Message, Theme, Renderer>>; 4] = [];
+            if service.running {
+                let uptime_string = format_uptime(service.time_init, service.time_now);
+                let time_init_string = format_uptime(service.time_started, service.time_init);
 
-            let name_text: Vec<String> = ["Name:".to_string(), service.name.clone()].to_vec();
-            column = column.push(get_detail_row(name_text));
-            let uptime_text: Vec<String> = ["Uptime:".to_string(), uptime_string.clone()].to_vec();
-            column = column.push(get_detail_row(uptime_text));
-            let time_init_text: Vec<String> = ["Time to init:".to_string(), time_init_string.clone()].to_vec();
-            column = column.push(get_detail_row(time_init_text));
-            let message_text: Vec<String> = ["Message:".to_string(), service.message.clone()].to_vec(); 
-            column = column.push(get_detail_row(message_text));
-            let read_text: Vec<String> = ["Live READ count:".to_string(), format!("{}", service.read_count), "total:".to_string(), format!("{}", service.read_count + service.total_reads)].to_vec();
-            column = column.push(get_detail_row(read_text));
-            let write_text: Vec<String> = ["Live WRITE count:".to_string(), format!("{}", service.write_count), "total:".to_string(), format!("{}", service.write_count + service.total_writes)].to_vec();
-            column = column.push(get_detail_row(write_text));
-            let open_text: Vec<String> = ["Live OPEN count:".to_string(), format!("{}", service.open_count), "total:".to_string(), format!("{}", service.open_count + service.total_opens)].to_vec();
-            column = column.push(get_detail_row(open_text));
-            let close_text: Vec<String> = ["Live CLOSE count:".to_string(), format!("{}", service.close_count), "total:".to_string(), format!("{}", service.write_count + service.total_closes)].to_vec();
-            column = column.push(get_detail_row(close_text));
-            let dup_text: Vec<String> = ["Live DUP count:".to_string(), format!("{}", service.dup_count), "total:".to_string(), format!("{}", service.dup_count+ service.total_dups)].to_vec(); 
-            column = column.push(get_detail_row(dup_text));
-            let error_text: Vec<String> = ["Live DUP count:".to_string(), format!("{}", service.error_count), "total:".to_string(), format!("{}", service.error_count+ service.total_errors)].to_vec(); 
-            column = column.push(get_detail_row(error_text));
+                let name_text: Vec<String> = ["Name:".to_string(), service.name.clone()].to_vec();
+                column = column.push(get_detail_row(name_text));
+                let uptime_text: Vec<String> = ["Uptime:".to_string(), uptime_string.clone()].to_vec();
+                column = column.push(get_detail_row(uptime_text));
+                let time_init_text: Vec<String> = ["Time to init:".to_string(), time_init_string.clone()].to_vec();
+                column = column.push(get_detail_row(time_init_text));
+                let message_text: Vec<String> = ["Message:".to_string(), service.message.clone()].to_vec(); 
+                column = column.push(get_detail_row(message_text));
+                let read_text: Vec<String> = ["Live READ count:".to_string(), format!("{}", service.read_count), "total:".to_string(), format!("{}", service.total_reads)].to_vec();
+                column = column.push(get_detail_row(read_text));
+                let write_text: Vec<String> = ["Live WRITE count:".to_string(), format!("{}", service.write_count), "total:".to_string(), format!("{}", service.total_writes)].to_vec();
+                column = column.push(get_detail_row(write_text));
+                let open_text: Vec<String> = ["Live OPEN count:".to_string(), format!("{}", service.open_count), "total:".to_string(), format!("{}", service.total_opens)].to_vec();
+                column = column.push(get_detail_row(open_text));
+                let close_text: Vec<String> = ["Live CLOSE count:".to_string(), format!("{}", service.close_count), "total:".to_string(), format!("{}", service.total_closes)].to_vec();
+                column = column.push(get_detail_row(close_text));
+                let dup_text: Vec<String> = ["Live DUP count:".to_string(), format!("{}", service.dup_count), "total:".to_string(), format!("{}", service.total_dups)].to_vec(); 
+                column = column.push(get_detail_row(dup_text));
+                let error_text: Vec<String> = ["Live ERROR count:".to_string(), format!("{}", service.error_count), "total:".to_string(), format!("{}", service.total_errors)].to_vec(); 
+                column = column.push(get_detail_row(error_text));
+            } else {
+                let name_text: Vec<String> = ["Name:".to_string(), service.name.clone()].to_vec();
+                column = column.push(get_detail_row(name_text));
 
-            Some(
-                cosmic::widget::container(
-                    column,
+                let message_text: Vec<String> = ["Last Message:".to_string(), service.message.clone()].to_vec(); 
+                column = column.push(get_detail_row(message_text));
+                let read_text: Vec<String> = ["Total READ count:".to_string(), format!("{}", service.total_reads)].to_vec();
+                column = column.push(get_detail_row(read_text));
+                let write_text: Vec<String> = ["Total WRITE count:".to_string(), format!("{}", service.total_writes)].to_vec();
+                column = column.push(get_detail_row(write_text));
+                let open_text: Vec<String> = ["Total OPEN count:".to_string(), format!("{}", service.total_opens)].to_vec();
+                column = column.push(get_detail_row(open_text));
+                let close_text: Vec<String> = ["Total CLOSE count:".to_string(), format!("{}", service.total_closes)].to_vec();
+                column = column.push(get_detail_row(close_text));
+                let dup_text: Vec<String> = ["Total DUP count:".to_string(), format!("{}", service.total_dups)].to_vec(); 
+                column = column.push(get_detail_row(dup_text));
+                let error_text: Vec<String> = ["Total ERROR count:".to_string(), format!("{}", service.total_errors)].to_vec(); 
+                column = column.push(get_detail_row(error_text));
+            }
+                Some(
+                    cosmic::widget::container(
+                        column,
+                    )
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill)
+                    .style(|_theme| {
+                        //TODO: theme this color
+                        widget::container::Style {
+                            background: Some(Background::Color(Color::from_rgba8(
+                                0x40, 0x40, 0x40, 0.5
+                            ))),
+                            //border: Border::default().color(Color::WHITE).width(1),
+                            ..Default::default()
+                        }
+                    })
+                    .into()
                 )
-                .width(iced::Length::Fill)
-                .height(iced::Length::Fill)
-                .style(|_theme| {
-                    //TODO: theme this color
-                    widget::container::Style {
-                        background: Some(Background::Color(Color::from_rgba8(
-                            0x40, 0x40, 0x40, 0.5
-                        ))),
-                        //border: Border::default().color(Color::WHITE).width(1),
-                        ..Default::default()
-                    }
-                })
-                .into()
-            )
         }
         _ => {None}
     }
