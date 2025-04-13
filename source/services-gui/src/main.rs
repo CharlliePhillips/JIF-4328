@@ -328,7 +328,7 @@ impl cosmic::Application for App {
     }
     
     fn subscription(&self) -> iced::Subscription<Self::Message> {
-        iced::time::every(iced::time::Duration::from_secs(3)).map(|_| Message::Tick)
+        time::every(iced::time::Duration::from_secs(3)).map(|_| Message::Tick)
     }
 }
 
@@ -376,6 +376,7 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
                 }
             }
         }
+        _ => {}
     }
 }
 
