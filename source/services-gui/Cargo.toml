@@ -18,6 +18,7 @@ tracing-subscriber = "0.3.19"
 tracing-log = "0.2.0"
 env_logger = "0.11"
 hex_color = { version = "3", features = ["serde"] }
+iced = { version = "0.13.1", features = ["tokio"] }
 indexmap = "2"
 #TODO: for repeat_n, which is in std in 1.82
 itertools = "0.14"

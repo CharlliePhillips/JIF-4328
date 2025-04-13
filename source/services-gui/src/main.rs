@@ -5,17 +5,17 @@
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{Write};
 
-use bstr::ByteSlice;
 use cosmic::app::{Core, Settings, Task};
 use cosmic::iced::widget::{column, row};
 use cosmic::iced_core::{Element, Size};
 use cosmic::prelude::*;
 use cosmic::widget::table;
 use cosmic::widget::{self, nav_bar};
-use cosmic::{executor, iced};
+use cosmic::{executor, iced::{self, time}};
 use shared::{format_uptime, get_response, SMCommand, TOMLMessage};
+
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Category {
@@ -133,6 +133,7 @@ pub enum Message {
     Start(String),
     Stop(String),
     NoOp,
+    Tick,
 }
 
 /// The [`App`] stores application-specific state.
@@ -229,6 +230,9 @@ impl cosmic::Application for App {
                 }
                 get_services(&mut self.table_model); //perform refresh automatically
             }
+            Message::Tick => {
+                get_services(&mut self.table_model);
+            }
             Message::NoOp => {}
         }
         Task::none()
@@ -322,6 +326,10 @@ impl cosmic::Application for App {
         .align_y(iced::Alignment::Center);
         Element::from(centered)
     }
+    
+    fn subscription(&self) -> iced::Subscription<Self::Message> {
+        iced::time::every(iced::time::Duration::from_secs(3)).map(|_| Message::Tick)
+    }
 }
 
 fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
@@ -370,6 +378,7 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
         }
     }
 }
+
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
