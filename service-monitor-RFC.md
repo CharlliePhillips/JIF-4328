@@ -77,9 +77,10 @@ A separate program with the name “services” will parse the arguments passed 
     - **What info shows if a daemon is not responding?**
         - If a daemon is stopped or otherwise not responding:
             `service "<service_name>" is stopped!`
-            - The service monitor will store the current state of each service as an enum `RUNNING`, `STOPPED`, `RESTARTED`. When the service monitor starts a service, or clears the data on a service marked as `RESTARTED` it will be put in the `RUNNING` state. 
+            - The service monitor will store the current state of each service as an enum `RUNNING`, `STOPPED`. When the service monitor starts a service, or clears the data on a service marked as `RESTARTED` it will be put in the `RUNNING` state. 
             - If the service has been stopped or otherwise becomes unresponsive it will be marked as being in the `STOPPED` state and will not be started again unless the service monitor receives an external request to restart it.
             - If a service has been restarted, then that should be indicated when requesting information from the service in the CLI, this example shows a service that was restarted 4 minutes and 43 seconds ago.
+            - Although there is not a visible `RESTARTED` state, the functionality of such a state is handled within the recover function.
             ```
             user:~$services info gtrand2
             Service: gtrand2
@@ -112,10 +113,10 @@ A separate program with the name “services” will parse the arguments passed 
         - Message – Set service’s message to placeholder “Message Cleared” 
         - Errors – The service’s error list and count is cleared/set to 0. 
         - Last response time & timeout – This is recorded per service, but by the Service Monitor. 
-4. **services start <daemon_name>:** 
+1. **services start <daemon_name>:** 
     - Starts registered daemon with the default arguments and settings specified in the `registry.toml`. If the daemon is already running inform the user and do nothing. 
     - End goal for dependencies: If any services that daemon depends on are not found/running, then the user is informed of the missing dependencies, and nothing is done. To automatically start any dependent services, add the `-f / -force` argument. 
-5. **services stop <daemon_name>:**
+2. **services stop <daemon_name>:**
     - Stops the registered daemon. First by “asking nicely” via setting a value in that daemon via the `setattr()` syscall. Then by sending a hang up signal (SIGHUP), and if the daemon is still running, by sending a kill signal (SIGKILL). Each syscall will be handled on its own thread, and should the operation take too long to return an alarm signal (SIGALRM) would be sent. This avoids the potential of the entire service manager getting caught on an unresponsive service. 
         
         services stop <daemon_name>: 
@@ -138,11 +139,11 @@ A separate program with the name “services” will parse the arguments passed 
         - As of April 2025, the below is not yet implemented but should be considered:
           - Adding the `-restart` argument stops a registered service and then starts it. Long-term data from a managed daemon scheme should be recorded. Some services require information from the kernel to be started in the correct state after Redox has booted. For these services use the argument `–restore`. Ex: `services stop –restore <daemon_name>`
 
-6. **services** / **services --help**
+3. **services** / **services --help**
     - Displays a help page detailing the available commands for the service monitor
     - Each command and subcommand for the service monitor also has it's own help page.
 
-7. **services registry view <daemon_name>**
+4. **services registry view <daemon_name>**
     - lists the `registry.toml` entry for the specified service, or indicates that the service has no entry. 
     - The info is returned in the service-entry format (see the section Service Registry -> Format below for more details): 
         ```toml
@@ -156,20 +157,20 @@ A separate program with the name “services” will parse the arguments passed 
         ```
 
     - this only includes the info specified in `registry.toml`, not the short-term info that is included in `services info <daemon_name>`
-8. **services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>**
+5. **services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>**
     - Adds a service to the registry, which will be automatically read into the service monitor.
     - `--old` | optional flag to indicate an old-style service. If set, the `r#type` will be set to "unmanaged". Otherwise, `r#type` is set to "daemon". An unmanaged service will be started by the service-monitor, but then released (and not managed).
     - `--override` | optional flag to for the `manual_override` component in smregistry.toml. If set, `manual_override` is set to true. Otherwise, `manual_override` is set to false.
     - If there are no args and/or dependencies for the service being passed, "[]" should be specified for part of the command.
-9.  **services registry edit <--old> <daemon_name> "['arg1', 'arg2'...]" "['dep1', 'dep2'...]" <scheme_path>**
+6.  **services registry edit <--old> <daemon_name> "['arg1', 'arg2'...]" "['dep1', 'dep2'...]" <scheme_path>**
     - Edits an entry in the registry. If running, the service will not be affected until restarted.
     - `--old` | optional flag to indicate an old-style service. If set, the `r#type` will be set to "unmanaged". Otherwise, `r#type` is set to "daemon". An unmanaged service will be started by the service-monitor, but then released (and not managed).
     - If there are no args and/or dependencies for the service being passed, "[]" should be specified for part of the command.
-10. **services registry remove <daemon_name>**
-   - Removes the `registry.toml` entry for the specified service if it exists. 
-   - If it does not exist, this command will not remove anything. 
-   - This will not affect the instance of the service that is currently running, only the entry in `registry.toml`
-11. **services registry** / **services registry --help**
+7.  **services registry remove <daemon_name>**
+       - Removes the `registry.toml` entry for the specified service if it exists. 
+       - If it does not exist, this command will not remove anything. 
+       - This will not affect the instance of the service that is currently running, only the entry in `registry.toml`
+8.  **services registry** / **services registry --help**
     - Displays a help page detailing the available commands for changing and viewing the registry.
 
 ## APIs and Message Flows 
