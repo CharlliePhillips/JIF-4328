@@ -19,7 +19,7 @@ It is critical that a way to monitor and recover services and other daemons be i
     - Currently, when the registry is read and a list of services is made, there is no dependency tree made from the dependencies of a given service. An end goal for the service monitor is for this to be implemented.  
 
 - Device Discovery (previously unknown device added to registry) 
-    - Long term the Redox team would like to add a “device discovery” daemon that would look for devices attached to the computer and determine their dependencies. This discovery daemon would then request any services needed for a device to be started. These requests will be received by the service monitor which will start that service as specified in the registry.toml. While that start thread is running the registry file will be checked for the service and the parameters will be updated if they are different and the manual parameter flag is not set (see more questions). The device discovery daemon is a future project and may need other functionality like stopping, registering, or de-registering services. There should be an API for these kinds of requests as well to make room for future development. 
+    - Long term the Redox team would like to add a “device discovery” daemon that would look for devices attached to the computer and determine their dependencies. This discovery daemon would then request any services needed for a device to be started. These requests will be received by the service monitor which will start that service as specified in the registry.toml. While that start thread is running the registry file will be checked for the service and the parameters will be updated if they are different and the manual parameter flag is not set (see more questions). The device discovery daemon is a future project and may need other functionality like stopping, registering, or de-registering services. There should be an API for these kinds of requests as well to make room for future development.
 
 - Timer-based Status Check 
     - As of April 2025, status is not checked on a timer but is checked and updated only when information is requested about a service.
@@ -106,17 +106,17 @@ A separate program with the name “services” will parse the arguments passed 
             - If it is restarted, then the restart time is recorded by service monitor, if we attempt to restart this service again within 5 seconds of this recorded time then the service is marked as unresponsive. An unresponsive service will have the state `STOPPED` and will not be restarted.
             - This does leave a question open on if we are unable to open and read the pid from a service we just started then should we assume it failed to start?
             - more info [in the rust docs](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html).
- 3. **services clear <daemon_name>:**
-- Clear short-term stats for <daemon_name>. 
-    - A user could clear short term stats and monitor for unusual changes (say a process is not using io when it normally should) This change in short term info can then be used to determine issues with the daemon A similar flow will be implemented as an automated part of the service manager. 
-        - Requests count – Total requests are still recorded by Service Manager 
-        - Message – Set service’s message to placeholder “Message Cleared” 
-        - Errors – The service’s error list and count is cleared/set to 0. 
-        - Last response time & timeout – This is recorded per service, but by the Service Monitor. 
-1. **services start <daemon_name>:** 
+3. **services clear <daemon_name>:**
+      - Clear short-term stats for <daemon_name>. 
+          - A user could clear short term stats and monitor for unusual changes (say a process is not using io when it normally should) This change in short term info can then be used to determine issues with the daemon A similar flow will be implemented as an automated part of the service manager. 
+              - Requests count – Total requests are still recorded by Service Manager 
+              - Message – Set service’s message to placeholder “Message Cleared” 
+              - Errors – The service’s error list and count is cleared/set to 0. 
+              - Last response time & timeout – This is recorded per service, but by the Service Monitor. 
+4. **services start <daemon_name>:** 
     - Starts registered daemon with the default arguments and settings specified in the `registry.toml`. If the daemon is already running inform the user and do nothing. 
     - End goal for dependencies: If any services that daemon depends on are not found/running, then the user is informed of the missing dependencies, and nothing is done. To automatically start any dependent services, add the `-f / -force` argument. 
-2. **services stop <daemon_name>:**
+5. **services stop <daemon_name>:**
     - Stops the registered daemon. First by “asking nicely” via setting a value in that daemon via the `setattr()` syscall. Then by sending a hang up signal (SIGHUP), and if the daemon is still running, by sending a kill signal (SIGKILL). Each syscall will be handled on its own thread, and should the operation take too long to return an alarm signal (SIGALRM) would be sent. This avoids the potential of the entire service manager getting caught on an unresponsive service. 
         
         services stop <daemon_name>: 
@@ -139,11 +139,11 @@ A separate program with the name “services” will parse the arguments passed 
         - As of April 2025, the below is not yet implemented but should be considered:
           - Adding the `-restart` argument stops a registered service and then starts it. Long-term data from a managed daemon scheme should be recorded. Some services require information from the kernel to be started in the correct state after Redox has booted. For these services use the argument `–restore`. Ex: `services stop –restore <daemon_name>`
 
-3. **services** / **services --help**
+6. **services** / **services --help**
     - Displays a help page detailing the available commands for the service monitor
     - Each command and subcommand for the service monitor also has it's own help page.
 
-4. **services registry view <daemon_name>**
+7. **services registry view <daemon_name>**
     - lists the `registry.toml` entry for the specified service, or indicates that the service has no entry. 
     - The info is returned in the service-entry format (see the section Service Registry -> Format below for more details): 
         ```toml
@@ -157,20 +157,20 @@ A separate program with the name “services” will parse the arguments passed 
         ```
 
     - this only includes the info specified in `registry.toml`, not the short-term info that is included in `services info <daemon_name>`
-5. **services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>**
+8. **services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>**
     - Adds a service to the registry, which will be automatically read into the service monitor.
     - `--old` | optional flag to indicate an old-style service. If set, the `r#type` will be set to "unmanaged". Otherwise, `r#type` is set to "daemon". An unmanaged service will be started by the service-monitor, but then released (and not managed).
     - `--override` | optional flag to for the `manual_override` component in smregistry.toml. If set, `manual_override` is set to true. Otherwise, `manual_override` is set to false.
     - If there are no args and/or dependencies for the service being passed, "[]" should be specified for part of the command.
-6.  **services registry edit <--old> <daemon_name> "['arg1', 'arg2'...]" "['dep1', 'dep2'...]" <scheme_path>**
+9.  **services registry edit <--old> <daemon_name> "['arg1', 'arg2'...]" "['dep1', 'dep2'...]" <scheme_path>**
     - Edits an entry in the registry. If running, the service will not be affected until restarted.
     - `--old` | optional flag to indicate an old-style service. If set, the `r#type` will be set to "unmanaged". Otherwise, `r#type` is set to "daemon". An unmanaged service will be started by the service-monitor, but then released (and not managed).
     - If there are no args and/or dependencies for the service being passed, "[]" should be specified for part of the command.
-7.  **services registry remove <daemon_name>**
+10.  **services registry remove <daemon_name>**
        - Removes the `registry.toml` entry for the specified service if it exists. 
        - If it does not exist, this command will not remove anything. 
        - This will not affect the instance of the service that is currently running, only the entry in `registry.toml`
-8.  **services registry** / **services registry --help**
+11. **services registry** / **services registry --help**
     - Displays a help page detailing the available commands for changing and viewing the registry.
 
 ## APIs and Message Flows 
