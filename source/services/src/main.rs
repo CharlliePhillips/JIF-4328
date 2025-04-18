@@ -1,6 +1,6 @@
 use clap::Parser;
 use serde::de;
-use shared::{SMCommand, CommandResponse, TOMLMessage, get_response, format_uptime};
+use shared::{format_timestamp, format_uptime, get_response, CommandResponse, SMCommand, TOMLMessage};
 use std::{
     fmt::format, fs::{File, OpenOptions}, io::{Read, Write}
 };
@@ -85,6 +85,7 @@ fn main() {
                 let mut uptime_row: Vec<String> = Vec::new();
                 let mut init_row: Vec<String> = Vec::new();
                 let mut message_row: Vec<String> = Vec::new();
+                let mut message_time_row: Vec<String> = Vec::new();
                 let mut read_row: Vec<String> = Vec::new();
                 let mut write_row: Vec<String> = Vec::new();
                 let mut open_row: Vec<String> = Vec::new();
@@ -93,19 +94,21 @@ fn main() {
                 if detail.running {
                     service_row.push("Service:".to_string());
                     service_row.push(detail.name.clone());
-
                     uptime_row.push("Uptime:".to_string());
                     uptime_row.push(format_uptime(detail.time_init, detail.time_now));
                     init_row.push("Time to init:".to_string());
                     init_row.push(format_uptime(detail.time_started, detail.time_init));
                     message_row.push("Message:".to_string());
                     message_row.push(detail.message.clone());
+                    message_time_row.push("Message time:".to_string()); 
+                    message_time_row.push(format_timestamp(detail.message_time));
 
                     rows1.push(service_row);
                     rows1.push(uptime_row);
                     rows1.push(init_row);
                     rows1.push(message_row);
-                
+                    rows1.push(message_time_row);
+              
                     read_row.push("Live READ count:".to_string());
                     read_row.push(format!("{}", detail.read_count));
                     read_row.push("total:".to_string());
@@ -126,12 +129,13 @@ fn main() {
                     error_row.push(format!("{}", detail.error_count));
                     error_row.push("total:".to_string());
                     error_row.push(format!("{}", detail.total_errors));
+                    
                     rows2.push(read_row);
                     rows2.push(write_row);
                     rows2.push(open_row);
                     rows2.push(close_row);
                     rows2.push(error_row);
-
+                    
                     table_fmt1.load_preset(comfy_table::presets::NOTHING)
                         .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
                         .add_rows(rows1)

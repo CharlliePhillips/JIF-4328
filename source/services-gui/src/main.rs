@@ -12,7 +12,7 @@ use std::sync::Arc;
 use cosmic::app::{Core, Settings, Task};
 use cosmic::cosmic_theme::ThemeBuilder;
 use cosmic::iced::window::close;
-use cosmic::iced::{time, Background, Border};
+use cosmic::iced::{time, Background, Border, Limits};
 use cosmic::iced::Color;
 use cosmic::iced::widget::{column, row};
 use cosmic::iced_core::{Element, Size};
@@ -21,7 +21,7 @@ use cosmic::prelude::*;
 use cosmic::widget::{table, table::Entity, Container, Text};
 use cosmic::widget::{self, nav_bar};
 use cosmic::{executor, iced};
-use shared::{format_uptime, get_response, CommandResponse, SMCommand, TOMLMessage};
+use shared::{format_timestamp, format_uptime, get_response, CommandResponse, SMCommand, TOMLMessage};
 use tracing_subscriber::registry::Data;
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash)]
@@ -123,7 +123,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = tracing_log::LogTracer::init();
 
     let settings = Settings::default()
-        .size(Size::new(1024., 768.));
+        .size(Size::new(1024., 768.))
+        .size_limits(Limits::new(Size::new(640., 480.), Size::new(15360., 8640.)));
 
     cosmic::app::run::<App>(settings, ())?;
 
@@ -206,6 +207,9 @@ impl cosmic::Application for App {
 
     /// Handle application events here.
     fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
+        //if let Some(window_id) = self.core.main_window_id() {
+            let _ = self.set_header_title("services-gui".to_string());
+        //}
         match message {
             Message::ItemSelect(entity) => {
                 self.table_model.activate(entity);
@@ -288,7 +292,6 @@ impl cosmic::Application for App {
                 .align_y(iced::Alignment::Center);
 
                 let centered = cosmic::widget::container(
-
                         cosmic::widget::responsive(|size| {
                             if size.width < 600.0 {
                                 widget::compact_table(&self.table_model)
@@ -492,8 +495,10 @@ fn get_info(service: String) -> Option<Container<'static, Message, Theme>> {
                 column = column.push(get_detail_row(uptime_text));
                 let time_init_text: Vec<String> = ["Time to init:".to_string(), time_init_string.clone()].to_vec();
                 column = column.push(get_detail_row(time_init_text));
-                let message_text: Vec<String> = ["Message:".to_string(), service.message.clone()].to_vec(); 
+                let message_text: Vec<String> = ["Message:".to_string(), service.message.clone()].to_vec();
                 column = column.push(get_detail_row(message_text));
+                let message_time_text: Vec<String> = ["Message time:".to_string(), format_timestamp(service.message_time)].to_vec();
+                column = column.push(get_detail_row(message_time_text));
                 let read_text: Vec<String> = ["Live READ count:".to_string(), format!("{}", service.read_count), "total:".to_string(), format!("{}", service.total_reads)].to_vec();
                 column = column.push(get_detail_row(read_text));
                 let write_text: Vec<String> = ["Live WRITE count:".to_string(), format!("{}", service.write_count), "total:".to_string(), format!("{}", service.total_writes)].to_vec();
@@ -510,8 +515,10 @@ fn get_info(service: String) -> Option<Container<'static, Message, Theme>> {
                 let name_text: Vec<String> = ["Name:".to_string(), service.name.clone()].to_vec();
                 column = column.push(get_detail_row(name_text));
 
-                let message_text: Vec<String> = ["Last Message:".to_string(), service.message.clone()].to_vec(); 
+                let message_text: Vec<String> = ["Message:".to_string(), service.message.clone()].to_vec();
                 column = column.push(get_detail_row(message_text));
+                let message_time_text: Vec<String> = ["Message time:".to_string(), format_timestamp(service.message_time)].to_vec();
+                column = column.push(get_detail_row(message_time_text));
                 let read_text: Vec<String> = ["Total READ count:".to_string(), format!("{}", service.total_reads)].to_vec();
                 column = column.push(get_detail_row(read_text));
                 let write_text: Vec<String> = ["Total WRITE count:".to_string(), format!("{}", service.total_writes)].to_vec();
@@ -525,24 +532,24 @@ fn get_info(service: String) -> Option<Container<'static, Message, Theme>> {
                 let error_text: Vec<String> = ["Total ERROR count:".to_string(), format!("{}", service.total_errors)].to_vec(); 
                 column = column.push(get_detail_row(error_text));
             }
-                Some(
-                    cosmic::widget::container(
-                        column,
-                    )
-                    .width(iced::Length::Fill)
-                    .height(iced::Length::Fill)
-                    .style(|_theme| {
-                        //TODO: theme this color
-                        widget::container::Style {
-                            background: Some(Background::Color(Color::from_rgba8(
-                                0x40, 0x40, 0x40, 0.5
-                            ))),
-                            //border: Border::default().color(Color::WHITE).width(1),
-                            ..Default::default()
-                        }
-                    })
-                    .into()
-                )
+            Some(
+                cosmic::widget::container(
+                    column,
+                )                
+                .style(|_theme| {
+                    //TODO: theme this color
+                    widget::container::Style {
+                        background: Some(Background::Color(Color::from_rgba8(
+                            0x40, 0x40, 0x40, 0.5
+                        ))),
+                        ..Default::default()
+                    }
+                })
+                .width(iced::Length::Fill)
+                .height(iced::Length::Shrink)
+
+                .into()
+            )
         }
         _ => {None}
     }
@@ -554,10 +561,10 @@ fn get_detail_row(strings: Vec<String>) -> Row<'static, Message, Theme, Renderer
     for (i, string) in strings.iter().enumerate() {
         if i % 2 == 0 {
             let title: Container<'static, Message, Theme> = cosmic::widget::container(
-        cosmic::widget::text(format!(" {}", string.clone())),
+        cosmic::widget::text(format!(" {}", string.clone())).size(20),
             )
             .width(iced::Length::Fill)
-            .height(iced::Length::Shrink)
+            .height(iced::Length::Fill)
             .style(|_theme| {
                 //TODO: theme this color
                 widget::container::Style {
@@ -572,10 +579,10 @@ fn get_detail_row(strings: Vec<String>) -> Row<'static, Message, Theme, Renderer
             row = row.push(title);
         } else {
             let data: Container<'static, Message, Theme> = cosmic::widget::container(
-                cosmic::widget::text(format!(" {}", string.clone())),
+                cosmic::widget::text(format!(" {}", string.clone())).size(20),
             )
             .width(iced::Length::Fill)
-            .height(iced::Length::Shrink)
+            .height(iced::Length::Fill)
             .style(|_theme| {
                 //TODO: theme this color
                 widget::container::Style {
@@ -588,7 +595,9 @@ fn get_detail_row(strings: Vec<String>) -> Row<'static, Message, Theme, Renderer
             });
             row = row.push(data);
         }
-    } 
+    }
+
+    //row = row.height(iced::Length::Shrink);
     return row;
 }
 
