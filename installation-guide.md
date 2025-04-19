@@ -17,6 +17,7 @@
 
 ## Running the Service Monitor
 - The service monitor will automatically run on boot, and will start all services in `registry.toml` afterwards.
+  - `ps` can be run in the command line to view all running processes.
 - The commands for the service-monitor can be found by running `services --help` in the command line.
 - `services-gui` can also be run to view the GUI version of the service monitor.
 
@@ -31,4 +32,4 @@
   - You cloned it into the right folder
   - You have edited the files above (`desktop.toml`, `init.fs`) with their respective additions correctly
 - If all of the above is correct, a fresh build of Redox could help resolve the issue (although this will take a while)
-- If you are still issues, read through the error message in case it has a quick fix, or stop by the Matrix Space for further assistance.
+- If you are still having issues, read through the error message in case it has a quick fix, or stop by the Matrix Space for further assistance.
