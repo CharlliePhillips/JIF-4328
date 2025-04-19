@@ -72,6 +72,7 @@ A separate program with the name “services” will parse the arguments passed 
         Dup count: 2
         Error count: 0
         Message: "random no: -1742356297751"
+        Message time: 2025-04-19 20:00:26.123 UTC
         user:~$
         ``` 
     - **What info shows if a daemon is not responding?**
@@ -110,7 +111,7 @@ A separate program with the name “services” will parse the arguments passed 
       - Clear short-term stats for <daemon_name>. 
           - A user could clear short term stats and monitor for unusual changes (say a process is not using io when it normally should) This change in short term info can then be used to determine issues with the daemon A similar flow will be implemented as an automated part of the service manager. 
               - Requests count – Total requests are still recorded by Service Manager 
-              - Message – Set service’s message to placeholder “Message Cleared” 
+              - Message – Set service’s message to placeholder “Message Cleared”. The time this message is set will also be recorded.4
               - Errors – The service’s error list and count is cleared/set to 0. 
               - Last response time & timeout – This is recorded per service, but by the Service Monitor. 
 4. **services start <daemon_name>:** 
@@ -186,10 +187,10 @@ A separate program with the name “services” will parse the arguments passed 
     - `requests_scheme` - Holds six u64 values counting requests to the main scheme for read, write, open, close, dup, and any errors.
         - **Read:** Fills the passed buffer with 48 bytes with each 8 bytes corresponding to a u64 in the order above.
         - **Write:** Used by the BaseScheme to update the service's stored stats. If `"clear"` is passed on the buffer then the stored values are set to zero, otherwise 48 bytes will be read from the buffer and copied to the same u64 values above.
-    - `time_stamp_scheme` - Holds a 64-bit timestamp of when the service was started. Recorded in seconds since Unix epoch (1/1/1970).
-        - **Read:** Fills the passed buffer with 8 bytes representing seconds (or millis?) as a u64.
+    - `time_stamp_scheme` - Holds a 64-bit timestamp of when the service was started. Recorded in milliseconds since Unix epoch (1/1/1970).
+        - **Read:** Fills the passed buffer with 8 bytes representing milliseconds as a u64.
         - **Write:** Default implementation returning EBADF. The time that a service started will be the same as long as it's running.
-    - `message_scheme` - Holds a 32? byte array of characters for a human readable status message.
+    - `message_scheme` - Holds a 40 byte array of characters for a human readable status message, the last 6 bits are reserved for a timestamp of when the message was set, It is   in milliseconds since the unix epoch.
 
         - **Write:** Overwrites the Service's current message with the passed buffer.
     - `control_scheme` - Holds a bool to indicate if a clear has been requested by the service monitor and another to indicate a graceful shutdown has been requested.
@@ -270,7 +271,7 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 - Passing the following strings to dup 
     - `"active"` Boolean indicates if a service is running, it is set to false when read, and set back to true by the service if it is still running. 
     - `"time_stamp"` Unix timestamp of when service started. 
-    - `"message"` An X byte limit string with a human readable message indicating the state of the service. Errors are logged to ‘error_list’ 
+    - `"message"` An 32 byte limit string with a human readable message indicating the state of the service, and the time that message was set.
     - `"stop"` When called the daemon will attempt to shut down gracefully potentially preserving state for restarting. 
     - `"request_count"` How many requests received in a tuple of ints (read, write, open, close, dup) 
     - `"error_count"` size of error_list. 
