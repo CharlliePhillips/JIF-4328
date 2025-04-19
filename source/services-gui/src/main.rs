@@ -7,6 +7,7 @@ use std::borrow::{BorrowMut, Cow};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+use std::process::Command;
 use std::sync::Arc;
 
 use cosmic::app::{Core, Settings, Task};
@@ -143,6 +144,7 @@ pub enum Message {
     Stop(String),
     ToPrimary,
     ToDoc,
+    Log,
     NoOp,
 }
 
@@ -257,6 +259,12 @@ impl cosmic::Application for App {
             Message::ToDoc => {
                 self.screen = Screen::Doc;
             }
+            Message::Log => {
+                Command::new("cosmic-edit")
+                    .arg("/scheme/sys/log")
+                    .spawn()
+                    .expect("failed to open log");
+            }
             Message::NoOp => {}
         }
         Task::none()
@@ -284,6 +292,7 @@ impl cosmic::Application for App {
 
                 let button_row = row![
                     cosmic::widget::button::text("Help").on_press(Message::ToDoc),
+                    cosmic::widget::button::text("System Log").on_press(Message::Log),
                     cosmic::widget::button::text("Start").on_press(start_msg),
                     cosmic::widget::button::text("Stop").on_press(stop_msg),
                     cosmic::widget::button::text("Info").on_press(Message::Detail),
