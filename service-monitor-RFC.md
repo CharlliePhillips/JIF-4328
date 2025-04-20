@@ -111,12 +111,12 @@ A separate program with the name “services” will parse the arguments passed 
       - Clear short-term stats for <daemon_name>. 
           - A user could clear short term stats and monitor for unusual changes (say a process is not using io when it normally should) This change in short term info can then be used to determine issues with the daemon A similar flow will be implemented as an automated part of the service manager. 
               - Requests count – Total requests are still recorded by Service Manager 
-              - Message – Set service’s message to placeholder “Message Cleared”. The time this message is set will also be recorded.4
+              - Message – Set service’s message to placeholder “Message Cleared”. The time this message is set will also be recorded.
               - Errors – The service’s error list and count is cleared/set to 0. 
               - Last response time & timeout – This is recorded per service, but by the Service Monitor. 
 4. **services start <daemon_name>:** 
     - Starts registered daemon with the default arguments and settings specified in the `registry.toml`. If the daemon is already running inform the user and do nothing. 
-    - End goal for dependencies: If any services that daemon depends on are not found/running, then the user is informed of the missing dependencies, and nothing is done. To automatically start any dependent services, add the `-f / -force` argument. 
+    - End goal for dependencies: If any services that daemon depends on are not found/running, then the user is informed of the missing dependencies, and nothing is done. To automatically start any dependent services, add the `-f / --force` argument. 
 5. **services stop <daemon_name>:**
     - Stops the registered daemon. First by “asking nicely” via setting a value in that daemon via the `setattr()` syscall. Then by sending a hang up signal (SIGHUP), and if the daemon is still running, by sending a kill signal (SIGKILL). Each syscall will be handled on its own thread, and should the operation take too long to return an alarm signal (SIGALRM) would be sent. This avoids the potential of the entire service manager getting caught on an unresponsive service. 
         
@@ -138,7 +138,7 @@ A separate program with the name “services” will parse the arguments passed 
         ```
     - Restart and Restore: 
         - As of April 2025, the below is not yet implemented but should be considered:
-          - Adding the `-restart` argument stops a registered service and then starts it. Long-term data from a managed daemon scheme should be recorded. Some services require information from the kernel to be started in the correct state after Redox has booted. For these services use the argument `–restore`. Ex: `services stop –restore <daemon_name>`
+          - Adding the `--restart` argument stops a registered service and then starts it. Long-term data from a managed daemon scheme should be recorded. Some services require information from the kernel to be started in the correct state after Redox has booted. For these services use the argument `--restore`. Ex: `services stop --restore <daemon_name>`
 
 6. **services** / **services --help**
     - Displays a help page detailing the available commands for the service monitor
@@ -190,7 +190,7 @@ A separate program with the name “services” will parse the arguments passed 
     - `time_stamp_scheme` - Holds a 64-bit timestamp of when the service was started. Recorded in milliseconds since Unix epoch (1/1/1970).
         - **Read:** Fills the passed buffer with 8 bytes representing milliseconds as a u64.
         - **Write:** Default implementation returning EBADF. The time that a service started will be the same as long as it's running.
-    - `message_scheme` - Holds a 40 byte array of characters for a human readable status message, the last 6 bits are reserved for a timestamp of when the message was set, It is   in milliseconds since the unix epoch.
+    - `message_scheme` - Holds a 40 byte array of characters for a human-readable status message. The last 6 bits are reserved for a timestamp of when the message was set in milliseconds since the Unix epoch.
 
         - **Write:** Overwrites the Service's current message with the passed buffer.
     - `control_scheme` - Holds a bool to indicate if a clear has been requested by the service monitor and another to indicate a graceful shutdown has been requested.
@@ -271,7 +271,7 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
 - Passing the following strings to dup 
     - `"active"` Boolean indicates if a service is running, it is set to false when read, and set back to true by the service if it is still running. 
     - `"time_stamp"` Unix timestamp of when service started. 
-    - `"message"` An 32 byte limit string with a human readable message indicating the state of the service, and the time that message was set.
+    - `"message"` A 32-byte limit string with a human-readable message indicating the state of the service and the time that message was sent.
     - `"stop"` When called the daemon will attempt to shut down gracefully potentially preserving state for restarting. 
     - `"request_count"` How many requests received in a tuple of ints (read, write, open, close, dup) 
     - `"error_count"` size of error_list. 
