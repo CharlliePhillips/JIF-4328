@@ -205,7 +205,6 @@ impl cosmic::Application for App {
             Message::PrintMsg(string) => tracing_log::log::info!("{}", string),
             Message::Refresh => {
                 get_services(&mut self.table_model);
-                self.selected = None;
             }
             Message::Start(service_name) => {
                 if let Ok(mut sm_fd) = OpenOptions::new()
@@ -328,17 +327,26 @@ impl cosmic::Application for App {
     }
     
     fn subscription(&self) -> iced::Subscription<Self::Message> {
-        time::every(iced::time::Duration::from_secs(3)).map(|_| Message::Tick)
+        time::every(time::Duration::from_secs(3)).map(|_| Message::Tick)
     }
 }
 
 fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
+    let mut saved_selected: String = String::new();
+    match table_model.item(table_model.active()) {
+        Some(selected) => {
+            saved_selected = selected.clone().name.clone(); //save selected item before refresh
+        },
+        None => {}
+    }
+
     *table_model = table::Model::new(vec![
         Category::Name,
         Category::Pid,
         Category::Uptime,
         Category::Msg,
     ]);
+    
     let list_cmd = SMCommand::List.encode().unwrap();
 
     let Ok(sm_fd) = &mut OpenOptions::new()
@@ -360,19 +368,37 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
         TOMLMessage::ServiceStats(stats) => {
             for s in stats {
                 if s.running {
-                    let _ = table_model.insert(Item {
-                        name: s.name.clone(),
-                        pid: s.pid,
-                        uptime: (s.time_init, s.time_now),
-                        msg: s.message.clone(),
-                    });
+                    if !saved_selected.is_empty() && s.name.clone() == saved_selected {
+                        let _ = table_model.insert(Item {
+                            name: s.name.clone(),
+                            pid: s.pid,
+                            uptime: (s.time_init, s.time_now),
+                            msg: s.message.clone(),
+                        }).activate();
+                    } else {
+                        let _ = table_model.insert(Item {
+                            name: s.name.clone(),
+                            pid: s.pid,
+                            uptime: (s.time_init, s.time_now),
+                            msg: s.message.clone(),
+                        });
+                    }
                 } else {
-                    let _ = table_model.insert(Item {
-                        name: s.name.clone(),
-                        pid: 0,
-                        uptime: (0,0),
-                        msg: "not running".to_string(),
-                    });
+                    if !saved_selected.is_empty() && s.name.clone() == saved_selected {
+                        let _ = table_model.insert(Item {
+                            name: s.name.clone(),
+                            pid: 0,
+                            uptime: (0,0),
+                            msg: "not running".to_string(),
+                        }).activate();
+                    } else {
+                        let _ = table_model.insert(Item {
+                            name: s.name.clone(),
+                            pid: 0,
+                            uptime: (0,0),
+                            msg: "not running".to_string(),
+                        });
+                    }
                 }
             }
         }
