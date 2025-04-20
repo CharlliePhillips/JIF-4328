@@ -10,6 +10,7 @@ use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{RequestKind, SignalBehavior, Socket};
 use scheme::SMScheme;
 use shared::{CommandResponse, RegistryCommand, SMCommand, ServiceDetailStats, ServiceRuntimeStats, TOMLMessage};
+
 use std::{
     str,
     sync::mpsc,
@@ -57,6 +58,7 @@ fn main() {
         daemon
             .ready()
             .expect("service-monitor: failed to notify parent");
+        // TODO move dep loop here
         loop {
             eval_cmd(&mut services, &mut sm_scheme);
             // The following is for handling requests to the SM scheme
@@ -247,7 +249,7 @@ fn update_service_info(service: &mut ServiceEntry) {
 
     let _ = read_helper(service, read_buffer, "message");
     // grab the string
-    let mut message_string = match str::from_utf8(&read_buffer) {
+    let mut message_string = match str::from_utf8(&read_buffer[0..32]) {
         Ok(data) => data,
         Err(_) => "<data not a valid string>",
     }
@@ -256,6 +258,10 @@ fn update_service_info(service: &mut ServiceEntry) {
     message_string.retain(|c| c != '\0');
     //info!("~sm found a data string: {:#?}", message_string);
     service.message = message_string;
+
+    let mut message_time_b: [u8; 8] = [0; 8];
+    message_time_b.clone_from_slice(&read_buffer[32..40]);
+    service.message_time = i64::from_ne_bytes(message_time_b);
 
     // get and print read, write, open, close, & dup count, they are successive u64 bytes read from requests subscheme
     let _ = read_helper(service, read_buffer, "request_count");
@@ -404,6 +410,7 @@ fn info(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMe
             error_count: service.error_count,
             total_errors: service.total_errors + service.error_count,
             message: service.message.clone(),
+            message_time: service.message_time,
             running: service.running,
         }
     } else {
@@ -426,6 +433,7 @@ fn info(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMe
             error_count: 0,
             total_errors: service.total_errors + service.error_count,
             message: service.message.clone(),
+            message_time: service.message_time,
             running: service.running,
         }
     };
