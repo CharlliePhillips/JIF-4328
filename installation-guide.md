@@ -27,9 +27,12 @@
 - For general build troubleshooting, it is worth checking here for a guide: https://doc.redox-os.org/book/troubleshooting.html#troubleshooting-the-build
 - For more specific help, ask in the Redox Matrix Space: https://matrix.to/#/#redox:matrix.org
 
+
 ### Service Monitor Issues
 - If you are running into issues compiling with the service monitor, check that:
   - You cloned it into the right folder
   - You have edited the files above (`desktop.toml`, `init.fs`) with their respective additions correctly
 - If all of the above is correct, a fresh build of Redox could help resolve the issue (although this will take a while)
+- In addition, viewing the system log may also highlight issues that are preventing the service monitor from functioning correctly
+  - In the command line, you can enter `cat /scheme/sys/log` to view the log
 - If you are still having issues, read through the error message in case it has a quick fix, or stop by the Matrix Space for further assistance.
