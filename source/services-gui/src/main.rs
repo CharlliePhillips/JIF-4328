@@ -15,7 +15,7 @@ use cosmic::prelude::*;
 use cosmic::widget::table;
 use cosmic::widget::{self, nav_bar};
 use cosmic::{executor, iced};
-use shared::{format_uptime, get_response, SMCommand, TOMLMessage};
+use shared::{format_uptime, get_response, CommandResponse, SMCommand, TOMLMessage};
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Category {
@@ -345,11 +345,12 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
     let response_string = std::str::from_utf8(&response_buffer)
         .expect("Error parsing response to UTF8")
         .to_string();
-    let msg: TOMLMessage = toml::from_str(&response_string).expect("Error parsing UTF8 to TOMLMessage");
+    let response: CommandResponse = toml::from_str(&response_string)
+        .expect("Error parsing CommandResponse!");
 
-    match &msg {
-        TOMLMessage::String(_str) => {}
-        TOMLMessage::ServiceStats(stats) => {
+
+    match &response.message {
+        Some(TOMLMessage::ServiceStats(stats)) => {
             for s in stats {
                 if s.running {
                     let _ = table_model.insert(Item {
@@ -368,6 +369,7 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
                 }
             }
         }
+        _ => {}
     }
 }
 

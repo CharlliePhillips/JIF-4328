@@ -9,7 +9,7 @@ use log::{error, info, warn};
 use redox_log::{OutputBuilder, RedoxLogger};
 use redox_scheme::{RequestKind, SignalBehavior, Socket};
 use scheme::SMScheme;
-use shared::{RegistryCommand, SMCommand, ServiceRuntimeStats, TOMLMessage};
+use shared::{CommandResponse, RegistryCommand, SMCommand, ServiceDetailStats, ServiceRuntimeStats, TOMLMessage};
 use std::{
     str,
     sync::mpsc,
@@ -35,20 +35,20 @@ fn main() {
         .enable();
     info!("service-monitor logger started");
 
-    // make list of managed services
-    let mut services: HashMap<String, ServiceEntry> = read_registry();
-
-    // start dependencies
-    for service in services.values_mut() {
-        start(service, None);
-    }
-
     redox_daemon::Daemon::new(move |daemon| {
         let name = "service-monitor";
         let socket =
             Socket::create(name).expect("service-monitor: failed to create Service Monitor scheme");
 
         let mut sm_scheme = SMScheme::new();
+
+        // make list of managed services
+        let mut services: HashMap<String, ServiceEntry> = read_registry();
+
+        // start dependencies
+        for service in services.values_mut() {
+            let _ = start(service);
+        }
 
         info!(
             "service-monitor daemonized with pid: {}",
@@ -88,139 +88,154 @@ fn main() {
     .expect("service-monitor: failed to daemonize");
 }
 
-/// Checks if the service-monitor's command value has been changed and performs the appropriate action.
+/// Executes then clears the command stored in the service-monitor's scheme.
 fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
+    let mut result: Result<Option<TOMLMessage>, Option<TOMLMessage>>;
     match &(sm_scheme.cmd) {
         Some(SMCommand::Stop { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 // info!("Stopping '{}'", service.config.name);
-                stop(service, sm_scheme);
+                result = stop(service);
             } else {
-                let name = service_name.clone();
-                let msg = TOMLMessage::String(format!("Unable to stop '{}': No such service", name));
-                let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                    .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
-                warn!("stop failed: no service named '{}'", name);
+                warn!("stop failed: no service named '{}'", service_name);
+                result = Err(Some(TOMLMessage::String(format!("Unable to stop '{}': No such service", service_name))));
             }
         }
         Some(SMCommand::Start { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 //info!("Starting '{}'", service.config.name);
-                start(service, Some(sm_scheme));
+                result = start(service);
             } else {
-                let name = service_name.clone();
-                let msg = TOMLMessage::String(format!("Unable to start '{}': No such service", name));
-                let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                    .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
-                warn!("start failed: no service named '{}'", name);
+                warn!("start failed: no service named '{}'", service_name);
+                result = Err(Some(TOMLMessage::String(format!("Unable to start '{}': No such service", service_name))));
             }
         }
-        Some(SMCommand::List) => list(services, sm_scheme),
+        Some(SMCommand::List) => {
+            result = list(services)
+        },
         Some(SMCommand::Clear { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 //info!("Clearing short-term stats for '{}'", service.config.name);
-                clear(service);
+                result = clear(service);
             } else {
-                let name = service_name.clone();
-                let msg = TOMLMessage::String(format!("Unable to clear '{}': No such service", name));
-                let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                    .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
-                warn!("clear failed: no service named '{}'", name);
+                warn!("clear failed: no service named '{}'", service_name);
+                result = Err(Some(TOMLMessage::String(format!("Unable to clear '{}': No such service", service_name))));
             }
         }
         Some(SMCommand::Info { service_name }) => {
             if let Some(service) = services.get_mut(service_name) {
                 //info!("Finding information for '{}'", service.config.name);
-                info(service, sm_scheme);
+                result = info(service);
             } else {
-                let name = service_name.clone();
-                let msg = TOMLMessage::String(format!("Unable to get info for '{}': No such service", name));
-                let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                    .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
-                warn!("info failed: no service named '{}'", name);
+                warn!("info failed: no service named '{}'", service_name);
+                result = Err(Some(TOMLMessage::String(format!("Unable to get info for '{}': No such service", service_name))));
             }
         }
-        Some(SMCommand::Registry { subcommand }) => match subcommand {
-            RegistryCommand::View { service_name } => {
-                let service_string = view_entry(service_name);
-                let msg = TOMLMessage::String(service_string);
-                let _ = sm_scheme.write_response(
-                    toml::to_string(&msg)
-                        .unwrap_or_else(|_| String::from(""))
-                    .as_bytes());
-            }
-            RegistryCommand::Add {
-                service_name,
-                old,
-                args,
-                manual_override,
-                depends,
-                scheme_path,
-            } => {
-                let r#type = if *old { "unmanaged" } else { "daemon" };
-                add_entry(
+        Some(SMCommand::Registry { subcommand }) => {
+            match subcommand {
+                RegistryCommand::View { service_name } => {
+                    result = view_entry(service_name);
+                }
+                RegistryCommand::Add {
                     service_name,
-                    r#type,
-                    args.as_ref().unwrap(),
-                    *manual_override,
+                    old,
+                    args,
+                    manual_override,
+                    depends,
                     scheme_path,
-                    depends.as_ref().unwrap(),
-                );
-                add_hash_entry(
+                } => {
+                    let r#type = if *old { "unmanaged" } else { "daemon" };
+                    // ! this overrides existing entries
+                    result = add_entry(
+                        service_name,
+                        r#type,
+                        args.as_ref().unwrap(),
+                        *manual_override,
+                        scheme_path,
+                        depends.as_ref().unwrap(),
+                    );
+                    match result {
+                        Ok(o) => {
+                            // ! but this doesn't
+                            result = add_hash_entry(
+                                service_name,
+                                r#type,
+                                args.as_ref().unwrap(),
+                                *manual_override,
+                                scheme_path,
+                                depends.as_ref().unwrap(),
+                                services,
+                            ).map(|_| o);
+                        }
+                        _ => {}
+                    }
+                }
+                RegistryCommand::Remove { service_name } => {
+                    result = rm_entry(service_name);
+                    match result {
+                        Ok(o) => {
+                            result = rm_hash_entry(services, service_name).map(|_| o);
+                        }
+                        _ => {}
+                    }
+                }
+                RegistryCommand::Edit {
                     service_name,
-                    r#type,
-                    args.as_ref().unwrap(),
-                    *manual_override,
+                    old,
+                    edit_args,
                     scheme_path,
-                    depends.as_ref().unwrap(),
-                    services,
-                );
-                if services.contains_key(service_name) {
-                    //println!("key found!");
-                    let entry = services.get(service_name).unwrap();
-                    //println!("{}", entry.config.scheme_path);
-                } else {
-                    //println!("key not found!");
+                    depends,
+                } => {
+                    result = edit_entry(
+                        service_name,
+                        *old,
+                        edit_args.as_ref().unwrap(),
+                        scheme_path,
+                        depends.as_ref().unwrap(),
+                    );
+                    match result {
+                        Ok(o) => {
+                            result = edit_hash_entry(
+                                services,
+                                service_name,
+                                *old,
+                                edit_args.as_ref().unwrap(),
+                                scheme_path,
+                                depends.as_ref().unwrap(),
+                            ).map(|_| o);
+                        }
+                        _ => {}
+                    }
                 }
             }
-            RegistryCommand::Remove { service_name } => {
-                rm_entry(service_name);
-                rm_hash_entry(services, service_name);
-            }
-            RegistryCommand::Edit {
-                service_name,
-                old,
-                edit_args,
-                scheme_path,
-                depends,
-            } => {
-                edit_entry(
-                    service_name,
-                    *old,
-                    edit_args.as_ref().unwrap(),
-                    scheme_path,
-                    depends.as_ref().unwrap(),
-                );
-                edit_hash_entry(
-                    services,
-                    service_name,
-                    *old,
-                    edit_args.as_ref().unwrap(),
-                    scheme_path,
-                    depends.as_ref().unwrap(),
-                );
-            }
         },
-        None => {}
+        None => {
+            // if we don't do this, writing response will crash service-monitor
+            return;
+        }
     }
+
+    match result {
+        Ok(msg) => {
+            let _ = sm_scheme.write_response(
+                &CommandResponse::new(
+                    sm_scheme.cmd.as_ref().unwrap(),
+                    true,
+                    msg
+                )
+            );
+        }
+        Err(msg) => {
+            let _ = sm_scheme.write_response(
+                &CommandResponse::new(
+                    sm_scheme.cmd.as_ref().unwrap(),
+                    false,
+                    msg
+                )
+            );
+        }
+    }
+
     // reset the current command value
     sm_scheme.cmd = None;
 }
@@ -274,24 +289,23 @@ fn update_service_info(service: &mut ServiceEntry) {
     service.time_init = time_init_int;
 }
 
-fn stop(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
-    let _ = sm_scheme;
+fn stop(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     if service.running {
-        clear(service);
+        let _ = clear(service);
         info!("trying to kill pid {}", service.pid);
         let _kill_ret = syscall::call::kill(service.pid, syscall::SIGKILL);
         service.running = false;
+        
+        // todo: remove service from internal list if it does not exist in the registry anymore
+        let name = service.config.name.clone();
+        Ok(Some(TOMLMessage::String(format!("Stopped service '{}'", name))))
     } else {
-        let msg = TOMLMessage::String(format!("Unable to stop '{}': Already stopped", service.config.name));
-        let _ = sm_scheme.write_response(
-            toml::to_string(&msg)
-            .unwrap_or_else(|_| String::from(""))
-            .as_bytes());
         warn!("stop failed: '{}' was already stopped", service.config.name);
+        Err(Some(TOMLMessage::String(format!("Unable to stop '{}': Already stopped", service.config.name))))
     }
 }
 
-fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
+fn start(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     // can add args here later with '.arg()'
     if !service.running {
         match std::process::Command::new(service.config.name.as_str()).spawn() {
@@ -299,11 +313,12 @@ fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
                 //service.pid = child.id().try_into().unwrap();
                 //service.pid += 2;
                 service.time_started = Local::now().timestamp_millis(); // where should this go for the start command?
+                // wait for the daemon loader to exit so we can safely get the pid
                 match child.wait() {
                     Ok(_ext) => {}
                     Err(_) => {
                         error!("{} failed to start!", service.config.name);
-                        return;
+                        return Err(Some(TOMLMessage::String(format!("Unable to start '{}': Process exited with failure code", service.config.name))));
                     }
                 }
                 let child_scheme =
@@ -311,14 +326,14 @@ fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
                         Ok(fd) => fd,
                         Err(_) => {
                             error!("failed to open service scheme!");
-                            return;
+                            return Err(Some(TOMLMessage::String(format!("Unable to start '{}': Failed to open scheme at '{}'", service.config.name, service.config.scheme_path))));
                         }
                     };
                 let pid_scheme = match libredox::call::dup(child_scheme, b"pid") {
                     Ok(pid_fd) => pid_fd,
                     Err(_) => {
                         error!("failed to dup service pid scheme!");
-                        return;
+                        return Err(Some(TOMLMessage::String(format!("Unable to start '{}': Failed to dup service pid scheme", service.config.name))));
                     }
                 };
                 let read_buffer: &mut [u8] = &mut [b'0'; 32];
@@ -326,34 +341,29 @@ fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
                     Ok(_usize) => {}
                     Err(_) => {
                         error!("could not read pid from service!");
+                        return Err(Some(TOMLMessage::String(format!("Unable to start '{}': Failed to read pid from service", service.config.name))));
                     }
                 }
                 // process the buffer based on the request
                 let mut pid_bytes: [u8; 8] = [0; 8];
-                for mut i in 0..8 {
+                for i in 0..8 {
                     //info!("byte {} reads {}", i, read_buffer[i]);
                     pid_bytes[i] = read_buffer[i];
-                    i += 1;
                 }
                 let pid = usize::from_ne_bytes(pid_bytes);
                 service.pid = pid;
                 info!("child started with pid: {:#?}", service.pid);
                 service.running = true;
+
+                Ok(Some(TOMLMessage::String(format!("Started '{}' with pid {:#?}", service.config.name, service.pid))))
             }
 
             Err(_e) => {
                 warn!("start failed: could not start {}", service.config.name);
+                Err(Some(TOMLMessage::String(format!("Unable to start '{}': Failed to locate executable", service.config.name))))
             }
-        };
-    } else {
-        if let Some(sm_scheme) = sm_scheme {
-            let msg = TOMLMessage::String(format!("Unable to start '{}': Already running", service.config.name));
-            let _ = sm_scheme.write_response(
-                toml::to_string(&msg)
-                .unwrap_or_else(|_| String::from(""))
-                .as_bytes());
         }
-        warn!("service: '{}' is already running", service.config.name);
+    } else {
         //test_service_data(service);
         if &service.config.name == "gtrand2" {
             test_timeout(service);
@@ -362,94 +372,69 @@ fn start(service: &mut ServiceEntry, sm_scheme: Option<&mut SMScheme>) {
         // to whatever the current value in the service is, the toal stored in the service monitor is
         // updated when the service's count is cleared.
         // info!(
-        //     "total reads: {}, total writes: {}",
-        //     service.total_reads, service.total_writes
-        // );
+            //     "total reads: {}, total writes: {}",
+            //     service.total_reads, service.total_writes
+            // );
+            
+        warn!("service: '{}' is already running", service.config.name);
+        Err(Some(TOMLMessage::String(format!("Unable to start '{}': Already running", service.config.name))))
     }
 }
 
-fn info(service: &mut ServiceEntry, sm_scheme: &mut SMScheme) {
-    if service.running {
+fn info(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
+    let stats = if service.running {
         update_service_info(service);
 
-        // set up time strings
-        let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
-        let time_init_string = time_string(service.time_started, service.time_init);
-        // info!(
-        //     "~sm time started registered versus time initialized: {}, {}",
-        //     service.time_started, service.time_init
-        // );
-
-        // set up the info string
-        let info_string = format!(
-            "Service: {} \nUptime: {} \nLast time to initialize: {} \n\
-                Live READ count: {}, Total: {} \n\
-                Live WRITE count: {}, Total: {}\n\
-                Live OPEN count: {}, Total: {} \n\
-                Live CLOSE count: {}, Total: {} \n\
-                Live DUP count: {}, Total: {} \n\
-                Live ERROR count: {}, Total: {} \n\
-                Message: \"{}\" ",
-            service.config.name,
-            uptime_string,
-            time_init_string,
-            service.read_count,
-            service.total_reads + service.read_count,
-            service.write_count,
-            service.total_writes + service.write_count,
-            service.open_count,
-            service.total_opens + service.open_count,
-            service.close_count,
-            service.total_closes + service.close_count,
-            service.dup_count,
-            service.total_dups + service.dup_count,
-            service.error_count,
-            service.total_errors + service.error_count,
-            service.message
-        );
-        //info!("~sm info string: {:#?}", info_string);
-
-        // set the info buffer to the formatted info string
-        let msg = TOMLMessage::String(info_string);
-        let _ = sm_scheme.write_response(
-            toml::to_string(&msg)
-                .unwrap_or_else(|_| String::from(""))
-            .as_bytes());
+        ServiceDetailStats {
+            name: service.config.name.clone(),
+            pid: service.pid,
+            time_init: service.time_init,
+            time_started: service.time_started,
+            time_now: Local::now().timestamp_millis(),
+            read_count: service.read_count,
+            total_reads: service.total_reads + service.read_count,
+            write_count: service.write_count,
+            total_writes: service.total_writes + service.write_count,
+            open_count: service.open_count,
+            total_opens: service.total_opens + service.open_count,
+            close_count: service.close_count,
+            total_closes: service.total_closes + service.close_count,
+            dup_count: service.dup_count,
+            total_dups: service.total_dups + service.dup_count,
+            error_count: service.error_count,
+            total_errors: service.total_errors + service.error_count,
+            message: service.message.clone(),
+            running: service.running,
+        }
     } else {
-        let info_string = format!(
-            "Service: {} is STOPPED\n\
-            Total READ count: {}\n\
-            Total WRITE count: {}\n\
-            Total OPEN count: {}\n\
-            Total CLOSE count: {}\n\
-            Total DUP count: {}\n\
-            Total ERROR count: {}\n\
-            Last message: \"{}\"",
-            service.config.name,
-            service.total_reads,
-            service.total_writes,
-            service.total_opens,
-            service.total_closes,
-            service.total_dups,
-            service.total_errors,
-            service.message
-        );
-        // set the info buffer to the formatted info string
-        let msg = TOMLMessage::String(info_string);
-        let _ = sm_scheme.write_response(
-            toml::to_string(&msg)
-                .unwrap_or_else(|_| String::from(""))
-            .as_bytes());
-    }
+        ServiceDetailStats {
+            name: service.config.name.clone(),
+            pid: service.pid,
+            time_init: service.time_init,
+            time_started: service.time_started,
+            time_now: Local::now().timestamp_millis(),
+            read_count: 0,
+            total_reads: service.total_reads + service.read_count,
+            write_count: 0,
+            total_writes: service.total_writes + service.write_count,
+            open_count: 0,
+            total_opens: service.total_opens + service.open_count,
+            close_count: 0,
+            total_closes: service.total_closes + service.close_count,
+            dup_count: 0,
+            total_dups: service.total_dups + service.dup_count,
+            error_count: 0,
+            total_errors: service.total_errors + service.error_count,
+            message: service.message.clone(),
+            running: service.running,
+        }
+    };
+    Ok(Some(TOMLMessage::ServiceDetail(stats)))
 }
 
-fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMScheme) {
+fn list(service_map: &mut HashMap<String, ServiceEntry>) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     let mut service_stats: Vec<ServiceRuntimeStats> = Vec::new();
-    // let mut end_string = String::new();
-    // let mut end_string: String = "Name | PID | Uptime | Message | Status\n".to_string();
 
-    //let mut listString = "";
-    //hashmap_bytes(services, sm_scheme);
     for service in service_map.values_mut() {
         if service.running {
             update_service_info(service);
@@ -464,59 +449,13 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSchem
             message: service.message.clone(),
             running: service.running,
         });
-        // if service.running {
-        //     update_service_info(service);
-        //     // set up time strings
-        //     let uptime_string = time_string(service.time_init, Local::now().timestamp_millis());
-
-        //     let list_string = format!(
-        //         "{} | {} | {} | {} | Running\n",
-        //         service.config.name, service.pid, uptime_string, service.message
-        //     );
-        //     info!("line: {}", list_string);
-        //     end_string.push_str(&list_string);
-        //     info!("End: {}", end_string);
-        // } else {
-        //     let stopped_string = format!("{} | none | none | none | not running\n", service.config.name);
-        //     end_string.push_str(&stopped_string);
-        // }
     }
 
-    let msg = TOMLMessage::ServiceStats(service_stats);
-    let _ = sm_scheme.write_response(
-        toml::to_string(&msg)
-            .unwrap_or_else(|_| String::from(""))
-        .as_bytes());
+    Ok(Some(TOMLMessage::ServiceStats(service_stats)))
 }
 
-// function that takes a time difference and returns a string of the time in hours, minutes, and seconds
-fn time_string(start_time: i64, end_time: i64) -> String {
-    let start = Local.timestamp_millis_opt(start_time).unwrap();
-    let end = Local.timestamp_millis_opt(end_time).unwrap();
-
-    let duration = end.signed_duration_since(start);
-
-    let hours = duration.num_hours();
-    let minutes = duration.num_minutes() % 60;
-    let seconds = duration.num_seconds() % 60;
-    let millisecs = duration.num_milliseconds() % 1000;
-    let seconds_with_millis = format!("{:02}.{:03}", seconds, millisecs);
-
-    let mut parts = Vec::new();
-
-    if hours > 0 {
-        parts.push(format!("{} hours", hours));
-    }
-    if minutes > 0 {
-        parts.push(format!("{} minutes", minutes));
-    }
-    parts.push(format!("{} seconds", seconds_with_millis));
-
-    parts.join(", ")
-}
-
-fn clear(service: &mut ServiceEntry) {
-    if (service.running) {
+fn clear(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
+    if service.running {
         // read the requests into a buffer
         let read_buffer: &mut [u8] = &mut [b'0'; 48];
         let _ = read_helper(service, read_buffer, "request_count");
@@ -552,10 +491,10 @@ fn clear(service: &mut ServiceEntry) {
         service.dup_count = 0;
         service.error_count = 0;
 
-        // TODO: write "clear successful" to output
+        Ok(Some(TOMLMessage::String(format!("Cleared short-term stats for '{}'", service.config.name))))
     } else {
-        // TODO: write "clear unsuccessful" to output
         warn!("Attempted to clear '{}' which is not running!", service.config.name);
+        Err(Some(TOMLMessage::String(format!("Failed to clear '{}'; service is not running", service.config.name))))
     }
 }
 
