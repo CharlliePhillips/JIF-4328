@@ -23,6 +23,7 @@ struct RequestsScheme {
     errors: u64,
 }
 struct TimeStampScheme(i64);
+struct LastUpdateTimeScheme(i64);
 struct MessageScheme([u8; 40]);
 // will hold a command enum?
 struct ControlScheme {
@@ -35,6 +36,7 @@ pub struct BaseScheme {
     pid_scheme: ManagementSubScheme,
     requests_scheme: ManagementSubScheme,
     time_stamp_scheme: ManagementSubScheme,
+    last_update_time_scheme: ManagementSubScheme,
     message_scheme: ManagementSubScheme,
     control_scheme: ManagementSubScheme,
     // handlers holds a map of the file descriptors/id to
@@ -61,6 +63,9 @@ impl BaseScheme {
                 errors: 0,
             }))),
             time_stamp_scheme: Arc::new(Mutex::new(Box::new(TimeStampScheme(
+                Local::now().timestamp_millis(),
+            )))),
+            last_update_time_scheme: Arc::new(Mutex::new(Box::new(LastUpdateTimeScheme(
                 Local::now().timestamp_millis(),
             )))),
             message_scheme: Arc::new(Mutex::new(Box::new(MessageScheme([65; 40])))),
@@ -199,6 +204,12 @@ impl Scheme for BaseScheme {
                 b"time_stamp" => {
                     let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
                     self.handlers.insert(new_id, self.time_stamp_scheme.clone());
+                    Ok(new_id)
+                }
+
+                b"last_update_time" => {
+                    let new_id = self.next_mgmt_id.fetch_sub(1, Ordering::Relaxed);
+                    self.handlers.insert(new_id, self.last_update_time_scheme.clone());
                     Ok(new_id)
                 }
 
@@ -425,6 +436,16 @@ impl Scheme for TimeStampScheme {
     }
 }
 
+impl ManagedScheme for LastUpdateTimeScheme {}
+impl Scheme for LastUpdateTimeScheme {
+    fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
+        let last_update_time = self.0.to_ne_bytes();
+
+        fill_buffer(buf, &last_update_time);
+        Ok(buf.len())
+    }
+}
+
 impl ManagedScheme for MessageScheme {}
 impl Scheme for MessageScheme {
     fn read(&mut self, _id: usize, buf: &mut [u8], _offset: u64, _flags: u32) -> Result<usize> {
@@ -493,6 +514,7 @@ pub struct Management {
     // TODO ^^ probably don't need these anymore
     pid: usize,
     time_stamp: i64,
+    last_update_time: i64,
     message: [u8; 32],
     // [0] = read, [1] = write
     // TODO: this should probably get split into 5 integers for read, write, open, close, and dup
@@ -514,6 +536,7 @@ impl Management {
             pid: std::process::id().try_into().unwrap(),
             // init timestamp to unix epoch
             time_stamp: 0,
+            last_update_time: 0,
             message: [0; 32],
             // request_count: (13, 42),
             reads: 0,

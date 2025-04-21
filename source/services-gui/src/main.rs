@@ -511,6 +511,8 @@ fn get_info(service: String) -> Option<Container<'static, Message, Theme>> {
                 column = column.push(get_detail_row(dup_text));
                 let error_text: Vec<String> = ["Live ERROR count:".to_string(), format!("{}", service.error_count), "total:".to_string(), format!("{}", service.total_errors)].to_vec(); 
                 column = column.push(get_detail_row(error_text));
+                let last_update_text: Vec<String> = ["Last update:".to_string(), format_timestamp(service.last_update_time)].to_vec();
+                column = column.push(get_detail_row(last_update_text));
             } else {
                 let name_text: Vec<String> = ["Name:".to_string(), service.name.clone()].to_vec();
                 column = column.push(get_detail_row(name_text));
@@ -531,6 +533,8 @@ fn get_info(service: String) -> Option<Container<'static, Message, Theme>> {
                 column = column.push(get_detail_row(dup_text));
                 let error_text: Vec<String> = ["Total ERROR count:".to_string(), format!("{}", service.total_errors)].to_vec(); 
                 column = column.push(get_detail_row(error_text));
+                let last_update_text: Vec<String> = ["Last update:".to_string(), format_timestamp(service.last_update_time)].to_vec();
+                column = column.push(get_detail_row(last_update_text));
             }
             Some(
                 cosmic::widget::container(

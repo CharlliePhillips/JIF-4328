@@ -91,6 +91,7 @@ fn main() {
                 let mut open_row: Vec<String> = Vec::new();
                 let mut close_row: Vec<String> = Vec::new();
                 let mut error_row: Vec<String> = Vec::new();
+                let mut last_update_row: Vec<String> = Vec::new();
                 if detail.running {
                     service_row.push("Service:".to_string());
                     service_row.push(detail.name.clone());
@@ -102,12 +103,15 @@ fn main() {
                     message_row.push(detail.message.clone());
                     message_time_row.push("Message time:".to_string()); 
                     message_time_row.push(format_timestamp(detail.message_time));
+                    last_update_row.push("Last update:".to_string());
+                    last_update_row.push(format_timestamp(detail.last_update_time));
 
                     rows1.push(service_row);
                     rows1.push(uptime_row);
                     rows1.push(init_row);
                     rows1.push(message_row);
                     rows1.push(message_time_row);
+                    rows1.push(last_update_row);
               
                     read_row.push("Live READ count:".to_string());
                     read_row.push(format!("{}", detail.read_count));
@@ -167,11 +171,14 @@ fn main() {
                     close_row.push(format!("{}", detail.total_closes));
                     error_row.push("Total ERROR count:".to_string());
                     error_row.push(format!("{}", detail.total_errors));
+                    last_update_row.push("Last update:".to_string());
+                    last_update_row.push(format_timestamp(detail.last_update_time));
                     rows1.push(read_row);
                     rows1.push(write_row);
                     rows1.push(open_row);
                     rows1.push(close_row);
                     rows1.push(error_row);
+                    rows1.push(last_update_row);
                     table_fmt1.load_preset(comfy_table::presets::NOTHING)
                         .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
                         .add_rows(rows1)

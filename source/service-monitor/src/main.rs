@@ -293,6 +293,8 @@ fn update_service_info(service: &mut ServiceEntry) {
     }
     let time_init_int = i64::from_ne_bytes(time_bytes);
     service.time_init = time_init_int;
+
+    service.last_update_time = Local::now().timestamp_millis();
 }
 
 fn stop(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
@@ -412,6 +414,7 @@ fn info(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMe
             message: service.message.clone(),
             message_time: service.message_time,
             running: service.running,
+            last_update_time: service.last_update_time,
         }
     } else {
         ServiceDetailStats {
@@ -435,6 +438,7 @@ fn info(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMe
             message: service.message.clone(),
             message_time: service.message_time,
             running: service.running,
+            last_update_time: service.last_update_time,
         }
     };
     Ok(Some(TOMLMessage::ServiceDetail(stats)))
@@ -456,6 +460,7 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>) -> Result<Option<TOMLMe
             time_now: Local::now().timestamp_millis(),
             message: service.message.clone(),
             running: service.running,
+            last_update_time: service.last_update_time,
         });
     }
 

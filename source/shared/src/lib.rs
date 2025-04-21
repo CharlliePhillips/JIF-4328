@@ -217,6 +217,7 @@ pub struct ServiceRuntimeStats {
     pub time_now: i64,
     pub message: String,
     pub running: bool,
+    pub last_update_time: i64,
 
 }
 
@@ -242,6 +243,7 @@ pub struct ServiceDetailStats {
     pub message: String,
     pub message_time: i64,
     pub running: bool,
+    pub last_update_time: i64,
 }
 
 /// Enum defining types of messages we may expect to get from a [CommandResponse]

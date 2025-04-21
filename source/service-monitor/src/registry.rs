@@ -37,6 +37,7 @@ pub struct ServiceEntry {
     pub last_response_time: i64,
     pub message: String,
     pub message_time: i64,
+    pub last_update_time: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -92,6 +93,7 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
             last_response_time: 0,
             message: String::new(),
             message_time: 0,
+            last_update_time: 0,
         };
         services.insert(new_entry.config.name.clone(), new_entry);
     }
@@ -171,6 +173,7 @@ pub fn add_entry(
         last_response_time: 0,
         message: String::new(),
         message_time: 0,
+        last_update_time: 0,
     };
     services.insert(name.to_string(), new_entry);
     write_registry(services);
@@ -282,6 +285,7 @@ pub fn edit_hash_entry(
             close_count: entry.close_count,
             dup_count: entry.dup_count,
             total_errors: entry.total_errors,
+            last_update_time: entry.last_update_time,
         };
 
         services.insert(name.to_string(), new_entry);
@@ -359,6 +363,7 @@ pub fn add_hash_entry(
             last_response_time: 0,
             message: String::new(),
             message_time: 0,
+            last_update_time: 0,
         };
         services.insert(name.to_string(), new_entry);
         Ok(Some(TOMLMessage::String(format!("Successfully added service '{}' to internal list", name))))
