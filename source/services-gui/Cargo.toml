@@ -24,7 +24,7 @@ serde = { version = "1", features = ["serde_derive"] }
 tokio = { version = "1", features = ["sync", "process", "time"] }
 # Internationalization
 # TODO: required by 1.80
-home = "=0.5.9"
+home = "=0.5.11"
 chrono = "*"
 shared = { version = "0.1.0", path = "../shared" }
 toml = { version = "0.8.20", features = ["preserve_order"] }
