@@ -3,7 +3,7 @@
 use clap::Subcommand;
 use std::{fs::File, io::Read, str};
 use serde::{Deserialize, Serialize};
-use chrono::{self, Local, TimeZone};
+use chrono::{self, DateTime, Local, NaiveDateTime, TimeZone};
 
 /// Command enum used by the service monitors' frontends to communicate with the service monitor daemon.
 #[derive(Subcommand, Serialize, Deserialize, Clone)]
@@ -242,6 +242,7 @@ pub struct ServiceDetailStats {
     pub total_dups: u64,
     pub total_errors: u64,
     pub message: String,
+    pub message_time: i64,
     pub running: bool,
 }
 
@@ -296,4 +297,13 @@ pub fn format_uptime(start_time_ms: i64, end_time_ms: i64) -> String {
     parts.push(format!("{} seconds", seconds_with_millis));
     
     parts.join(", ")
+}
+
+pub fn format_timestamp(timestamp_ms: i64) -> String {
+    let dt_opt = DateTime::from_timestamp_millis(timestamp_ms);
+    if dt_opt == None {
+        return "".to_string();
+    }
+    let timestamp = dt_opt.unwrap();
+    timestamp.to_string()
 }

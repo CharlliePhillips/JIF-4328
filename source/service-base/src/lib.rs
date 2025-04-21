@@ -23,7 +23,7 @@ struct RequestsScheme {
     errors: u64,
 }
 struct TimeStampScheme(i64);
-struct MessageScheme([u8; 32]);
+struct MessageScheme([u8; 40]);
 // will hold a command enum?
 struct ControlScheme {
     stop: bool,
@@ -63,7 +63,7 @@ impl BaseScheme {
             time_stamp_scheme: Arc::new(Mutex::new(Box::new(TimeStampScheme(
                 Local::now().timestamp_millis(),
             )))),
-            message_scheme: Arc::new(Mutex::new(Box::new(MessageScheme([65; 32])))),
+            message_scheme: Arc::new(Mutex::new(Box::new(MessageScheme([65; 40])))),
             control_scheme: Arc::new(Mutex::new(Box::new(ControlScheme {
                 stop: false,
                 clear: false,
@@ -95,11 +95,6 @@ impl BaseScheme {
         // see ControlScheme fn read(), the byte at index one is our clear bit.
         if r_buf[1] == 1 {
             // TODO: figure out how graceful stop affects this
-            let mut message_lock = self
-                .message_scheme
-                .lock()
-                .map_err(|_err| Error::new(EBADF))?;
-            let _ = message_lock.write(0, b"message cleared", 0, 0);
 
             // TODO: get a lock on the reuqests scheme and write to clear it
             let mut requests_lock = self
@@ -118,6 +113,8 @@ impl BaseScheme {
 
             // clear the control scheme so we know not to update again
             let _ = control_lock.write(0, b"cleared", 0, 0);
+            
+            let _ = self.message("message cleared");
             return Ok(1);
         } else if r_buf[0] == 1 {
             // graceful shutdown code could go here?
@@ -144,22 +141,23 @@ impl BaseScheme {
         }
     }
 
-    pub fn message(&self, message: &str) -> Result<[u8; 32]> {
-        let msg_arr: &mut [u8] = &mut [0; 32];
+    pub fn message(&self, message: &str) -> Result<[u8; 40]> {
+        let msg_arr: &mut [u8] = &mut [0; 40];
         if message.len() > 32 {
-            msg_arr.copy_from_slice(&message.as_bytes()[0..32]);
+            msg_arr[0..32].copy_from_slice(&message.as_bytes()[0..32]);
         } else {
             msg_arr[0..message.len()].copy_from_slice(&message.as_bytes());
         }
+        msg_arr[32..40].copy_from_slice(Local::now().timestamp_millis().as_bytes());
         let mut message_lock = self
             .message_scheme
             .lock()
             .map_err(|_err| Error::new(EBADF))?;
         let _ = message_lock.write(0, msg_arr, 0, 0);
 
-        let old_msg: &mut [u8] = &mut [0; 32];
+        let old_msg: &mut [u8] = &mut [0; 40];
         let _ = message_lock.read(0, old_msg, 0, 0);
-        let mut msg_out: [u8; 32] = [0; 32];
+        let mut msg_out: [u8; 40] = [0; 40];
         msg_out.copy_from_slice(old_msg);
         return Ok(msg_out);
     }
@@ -437,7 +435,7 @@ impl Scheme for MessageScheme {
 
     fn write(&mut self, _id: usize, buf: &[u8], _offset: u64, _flags: u32) -> Result<usize> {
         // message is already stored as an array of bytes
-        self.0 = [0; 32];
+        self.0 = [0; 40];
         fill_buffer(&mut self.0, buf);
         Ok(buf.len())
     }

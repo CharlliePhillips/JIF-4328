@@ -51,6 +51,7 @@ pub struct ServiceEntry {
     pub last_response_time: i64,
     /// A human-readable message reported by the service.
     pub message: String,
+    pub message_time: i64,
 }
 
 /// A helper-struct used by the TOML parser to read/write to and from the registry on disk.
@@ -119,6 +120,7 @@ pub fn read_registry() -> HashMap<String, ServiceEntry> {
             total_errors: 0,
             last_response_time: 0,
             message: String::new(),
+            message_time: 0,
         };
         services.insert(new_entry.config.name.clone(), new_entry);
     }
@@ -208,6 +210,7 @@ pub fn add_entry(
         total_errors: 0,
         last_response_time: 0,
         message: String::new(),
+        message_time: 0,
     };
     services.insert(name.to_string(), new_entry);
     write_registry(services);
@@ -314,6 +317,7 @@ pub fn edit_hash_entry(
             error_count: entry.error_count,
             last_response_time: entry.last_response_time,
             message: entry.message.clone(),
+            message_time: entry.message_time,
             total_reads: entry.total_reads,
             total_writes: entry.total_writes,
             total_opens: entry.total_opens,
@@ -349,7 +353,7 @@ pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: &str) -
             let entry = services.get(name).unwrap();
             if entry.running {
                 // todo: msg: "Running service has been removed from the registry. It will be removed from the internal list when the service is stopped."
-                Err(Some(TOMLMessage::String(format!("Unable to remove '{}' from internal list; service is still running", name))))
+                Err(Some(TOMLMessage::String(format!("Service: '{}' will be removed once it is stopped", name))))
                 //println!("Cannot remove an entry that is currently running");
             } else {
                 services.remove(name);
@@ -409,6 +413,7 @@ pub fn add_hash_entry(
             total_errors: 0,
             last_response_time: 0,
             message: String::new(),
+            message_time: 0,
         };
         services.insert(name.to_string(), new_entry);
         Ok(Some(TOMLMessage::String(format!("Successfully added service '{}' to internal list", name))))
