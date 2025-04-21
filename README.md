@@ -32,9 +32,19 @@ A system health monitoring service for Redox OS
 - If the GUI and CLI try to communicate with the service-monitor at the same time both will fail. The service monitor itself does not fail though, repeating the command should succeed.
 - If the "Info" tab is clicked before selecting a service, info will be opened once a selection is made. The info tab should do nothing before a service is selected.
 
+#### Squashed Bugs
+- The info and list commands now properly display services that are not running.
+- When attempting to run the service recovery test too quickly the whole OS will freeze. This is likely due to the threading used for timeout detection, other components may need to be refactored for multithreading for this to be fixed.
+- Excluding the dependencies argument from services registry edit causes a panic
+- Error text for depends list for services registry add prefixes the list with 'args' instead of 'depends'
+- Depends list for services registry add is shown as optional, but omitting causes clap parser to demand it
+- Fixed 2 regressions with services clear and the BaseScheme API
+- Fixed timeout recovery test (gtrand2 times out when attempting to start it twice).
+- GUI table would have any sorting reset upon refresh.
+
 ## Installation Guide
 [click here to see the installation guide](https://gitlab.redox-os.org/CharlliePhillips/service-monitor/-/blob/main/installation-guide.md?ref_type=heads)
 
 ## Detailed Design Documentation
-[click here to see the installation guide](https://gitlab.redox-os.org/CharlliePhillips/service-monitor/-/blob/main/detailed-design.pdf?ref_type=heads)
+[click here to see the detailed design docs](https://gitlab.redox-os.org/CharlliePhillips/service-monitor/-/blob/main/detailed-design.pdf?ref_type=heads)
 
