@@ -5,7 +5,7 @@ use std::{fs::File, io::Read, str};
 use serde::{Deserialize, Serialize};
 use chrono::{self, Local, TimeZone};
 
-/// Command enum used by the services command line
+/// Command enum used by the service monitors' frontends to communicate with the service monitor daemon.
 #[derive(Subcommand, Serialize, Deserialize, Clone)]
 #[serde(tag = "command")]
 pub enum SMCommand {
@@ -62,7 +62,7 @@ impl std::fmt::Display for RegistryCommand {
     }
 }
 
-/// Registry subcommand used by the services command line to view/edit the registry
+/// Registry subcommand enum used to interact with the registry.
 #[derive(Subcommand, Serialize, Deserialize, Clone)]
 pub enum RegistryCommand {
     #[command(about = "Add a service to the registry")]
@@ -116,7 +116,7 @@ pub enum RegistryCommand {
     }
 }
 
-/// Validation function used to ensure the correct format is used for the `args` vector
+/// Validation function used to ensure the correct format is used for the `args` vector.
 fn validate_args(s: &str) -> Result<Vec<String>, String> {
     let mut parsed: String = String::from(s);
     if !parsed.starts_with("args=") {
@@ -138,7 +138,7 @@ fn validate_args(s: &str) -> Result<Vec<String>, String> {
     return Ok(vec.args);    
 }
 
-/// Validation function used to ensure the correct format is used for the `deps` vector
+/// Validation function used to ensure the correct format is used for the `deps` vector.
 fn validate_deps(s: &str) -> Result<Vec<String>, String> {
     let mut parsed: String = String::from(s);
     if !parsed.starts_with("deps=") {
@@ -180,7 +180,7 @@ impl SMCommand {
     }
 }
 
-/// Struct defining the response generated after running an [SMCommand]
+/// Struct defining the response generated after running an [SMCommand].
 #[derive(Serialize, Deserialize)]
 pub struct CommandResponse {
     /// Info regarding the command
@@ -197,7 +197,7 @@ impl CommandResponse {
     }
 }
 
-/// Struct containing info about the [SMCommand] that was run and whether it succeeded
+/// Struct containing info about the [SMCommand] that was run and whether it succeeded.
 #[derive(Serialize, Deserialize)]
 pub struct CommandStatus {
     /// A copy of the command struct that was run
@@ -220,6 +220,8 @@ pub struct ServiceRuntimeStats {
 
 }
 
+/// Struct containing detailed data about a registered service's runtime stats.
+/// This is used primarily for the `services info` command.
 #[derive(Serialize, Deserialize)]
 pub struct ServiceDetailStats {
     pub name: String,
@@ -244,7 +246,7 @@ pub struct ServiceDetailStats {
 }
 
 
-/// Enum defining types of messages we may expect to get from a [CommandResponse]
+/// Enum defining types of messages we may expect to get from a [CommandResponse].
 #[derive(Serialize, Deserialize)]
 pub enum TOMLMessage {
     String(String),
@@ -253,6 +255,7 @@ pub enum TOMLMessage {
 }
 
 /// Reads the command responsed buffer from the service-monitor's scheme.
+/// 
 /// # Panics
 /// If reading the file fails, this may cause a panic.
 // todo: Graceful error handling (put into a `Result<Vec<u8>, String>`, prevent timeouts?)
@@ -269,7 +272,7 @@ pub fn get_response(sm_fd: &mut File) -> Vec<u8> {
     return response;
 }
     
-/// Function that takes a time difference and returns a string of the time in hours, minutes, and seconds
+/// Function that takes a time difference and returns a string of the time in hours, minutes, and seconds.
 pub fn format_uptime(start_time_ms: i64, end_time_ms: i64) -> String {
     let start = Local.timestamp_millis_opt(start_time_ms).unwrap();
     let end = Local.timestamp_millis_opt(end_time_ms).unwrap();
