@@ -98,6 +98,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             if let Some(service) = services.get_mut(service_name) {
                 // info!("Stopping '{}'", service.config.name);
                 result = stop(service);
+                // if we stopped the service successfully, update its entry in the internal map
                 if let Ok(_k) = result.as_mut() {
                     let mut registry = read_registry();
                     let registry_value = registry.remove(service_name);
@@ -226,6 +227,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
         }
     }
 
+    // write back a response to the service monitor's scheme
     match result {
         Ok(msg) => {
             let _ = sm_scheme.write_response(
@@ -251,6 +253,7 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
     sm_scheme.cmd = None;
 }
 
+/// Updates runtime info about a service.
 fn update_service_info(service: &mut ServiceEntry) {
     //info!("Updating information for: {}", service.config.name);
 
@@ -304,6 +307,7 @@ fn update_service_info(service: &mut ServiceEntry) {
     service.time_init = time_init_int;
 }
 
+/// Stops a service.
 fn stop(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     if service.running {
         let _ = clear(service);
@@ -320,6 +324,7 @@ fn stop(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMe
     }
 }
 
+/// Starts a service.
 fn start(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     // can add args here later with '.arg()'
     if !service.running {
@@ -396,6 +401,7 @@ fn start(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLM
     }
 }
 
+/// Collects runtime info about a service to be viewed by a user-facing frontend.
 fn info(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     let stats = if service.running {
         update_service_info(service);
@@ -449,6 +455,12 @@ fn info(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMe
     Ok(Some(TOMLMessage::ServiceDetail(stats)))
 }
 
+/// Collects high-level info about all services registered into the service monitor.
+/// This info is pulled from the service monitor's internal services map.
+/// This map may differ from the registry TOML stored on-disk if a service was modified
+/// or removed from the registry while it is still running. In these cases, the info shown
+/// will reflect the configuration of the servce it was launched with. This will update
+/// after the service is stopped.
 fn list(service_map: &mut HashMap<String, ServiceEntry>) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     let mut service_stats: Vec<ServiceRuntimeStats> = Vec::new();
 
@@ -471,6 +483,7 @@ fn list(service_map: &mut HashMap<String, ServiceEntry>) -> Result<Option<TOMLMe
     Ok(Some(TOMLMessage::ServiceStats(service_stats)))
 }
 
+/// Clears the short-term runtime stats for a service.
 fn clear(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMessage>> {
     if service.running {
         // read the requests into a buffer
@@ -515,6 +528,7 @@ fn clear(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLM
     }
 }
 
+/// Test function to test timeout recovery.
 fn test_timeout(gtrand2: &mut ServiceEntry) {
     let read_buf = &mut [b'0'; 8];
     // make sure we can read
@@ -578,6 +592,7 @@ fn test_err(gtrand2: &mut ServiceEntry) {
     }
 }
 
+/// Function to help read from a service's scheme.
 fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> Result<usize> {
     let mut try_again = true;
     let mut result: Result<usize> = Err(Error::new(EBADF));
@@ -641,6 +656,7 @@ fn read_helper(service: &mut ServiceEntry, read_buf: &mut [u8], data: &str) -> R
     result
 }
 
+/// Function to help write to a service's scheme.
 fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) -> Result<usize> {
     let mut try_again = true;
     let mut result: Result<usize> = Err(Error::new(EBADF));
@@ -714,6 +730,7 @@ fn write_helper(service: &mut ServiceEntry, subscheme_name: &str, data: &str) ->
     result
 }
 
+/// Attempts to restart a service.
 fn recover(service: &mut ServiceEntry) -> bool {
     let _kill_res = syscall::kill(service.pid, syscall::SIGKILL);
     service.running = false;
