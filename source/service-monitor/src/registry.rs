@@ -298,13 +298,13 @@ pub fn rm_hash_entry(services: &mut HashMap<String, ServiceEntry>, name: &str) -
     let services_toml = read_registry();
     if let Some(_entry) = services_toml.get(name) {
         Err(Some(TOMLMessage::String(format!("Unable to remove '{}' from internal list; service is still present in the registry", name))))
-        //println!("Service is still present in registry, unable to remove from internal list");
+        //println!("Service is still present in registry,  from internal list");
     } else {
         if services.contains_key(name) {
             let entry = services.get(name).unwrap();
             if entry.running {
                 // todo: msg: "Running service has been removed from the registry. It will be removed from the internal list when the service is stopped."
-                Err(Some(TOMLMessage::String(format!("Unable to remove '{}' from internal list; service is still running", name))))
+                Err(Some(TOMLMessage::String(format!("Service: '{}' will be removed once it is stopped", name))))
                 //println!("Cannot remove an entry that is currently running");
             } else {
                 services.remove(name);
