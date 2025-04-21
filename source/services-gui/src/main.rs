@@ -7,8 +7,10 @@ use std::borrow::{BorrowMut, Cow};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+use std::process::Command;
 use std::sync::Arc;
 
+use cosmic::action::cosmic;
 use cosmic::app::{Core, Settings, Task};
 use cosmic::cosmic_theme::ThemeBuilder;
 use cosmic::iced::window::close;
@@ -143,6 +145,7 @@ pub enum Message {
     Stop(String),
     ToPrimary,
     ToDoc,
+    Log,
     NoOp,
 }
 
@@ -257,6 +260,12 @@ impl cosmic::Application for App {
             Message::ToDoc => {
                 self.screen = Screen::Doc;
             }
+            Message::Log => {
+                Command::new("cosmic-edit")
+                    .arg("/scheme/sys/log")
+                    .spawn()
+                    .expect("failed to open log");
+            }
             Message::NoOp => {}
         }
         Task::none()
@@ -284,6 +293,7 @@ impl cosmic::Application for App {
 
                 let button_row = row![
                     cosmic::widget::button::text("Help").on_press(Message::ToDoc),
+                    cosmic::widget::button::text("System Log").on_press(Message::Log),
                     cosmic::widget::button::text("Start").on_press(start_msg),
                     cosmic::widget::button::text("Stop").on_press(stop_msg),
                     cosmic::widget::button::text("Info").on_press(Message::Detail),
@@ -391,12 +401,23 @@ impl cosmic::Application for App {
 
                 let centered = cosmic::widget::container(
                     column![
-                        button_row,
-
+                        column![
+                            button_row,
+                        ]
+                        .spacing(cosmic::theme::spacing().space_s)
+                        .width(iced::Length::Fill)
+                        .align_x(iced::Alignment::End),
+                        column![
+                            cosmic::widget::text("  1. Click on any service to select it.").size(20),
+                            cosmic::widget::text("  2. With a service selected, click 'Start' or 'Stop' to start or stop the service.").size(20),
+                            cosmic::widget::text("  3. With a service selected, click 'Info' to view detailed statistics on that service.").size(20),
+                            cosmic::widget::text("  4. At any time click 'System Log' to view the system log.").size(20),
+                            cosmic::widget::text("  5. Service statistics will be automatically updated every 3 seconds.").size(20),
+                        ]
+                        .spacing(cosmic::theme::spacing().space_s)
+                        .width(iced::Length::Fill)
+                        .align_x(iced::Alignment::Start),
                     ]
-                    .spacing(cosmic::theme::spacing().space_s)
-                    .width(iced::Length::Fill)
-                    .align_x(iced::Alignment::End),
                 )
                 .width(iced::Length::Fill)
                 .height(iced::Length::Shrink)
