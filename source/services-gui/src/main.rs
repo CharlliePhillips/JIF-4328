@@ -147,6 +147,7 @@ pub enum Message {
     ToDoc,
     Log,
     NoOp,
+    Tick,
 }
 
 #[derive(Clone, Debug)]
@@ -265,6 +266,9 @@ impl cosmic::Application for App {
                     .arg("/scheme/sys/log")
                     .spawn()
                     .expect("failed to open log");
+            }
+            Message::Tick => {
+                get_services(&mut self.table_model);
             }
             Message::NoOp => {}
         }
@@ -429,10 +433,21 @@ impl cosmic::Application for App {
         }        
     }
     
+    fn subscription(&self) -> iced::Subscription<Self::Message> {
+        time::every(time::Duration::from_secs(3)).map(|_| Message::Tick)
+    }
+    
 }
 
 fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
-    let active: Entity = table_model.active();
+    let mut saved_selected: String = String::new();
+    match table_model.item(table_model.active()) {
+        Some(selected) => {
+            saved_selected = selected.name.clone(); //save selected item before refresh
+        },
+        None => {}
+    }
+
     *table_model = table::Model::new(vec![
         Category::Name,
         Category::Pid,
@@ -461,28 +476,45 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
         Some(TOMLMessage::ServiceStats(stats)) => {
             for s in stats {
                 if s.running {
-                    let _ = table_model.insert(Item {
-                        name: s.name.clone(),
-                        pid: s.pid,
-                        uptime: (s.time_init, s.time_now),
-                        msg: s.message.clone(),
-                    });
+                    if !saved_selected.is_empty() && s.name.clone() == saved_selected {
+                        let _ = table_model.insert(Item {
+                            name: s.name.clone(),
+                            pid: s.pid,
+                            uptime: (s.time_init, s.time_now),
+                            msg: s.message.clone(),
+                        }).activate();
+                    } else {
+                        let _ = table_model.insert(Item {
+                            name: s.name.clone(),
+                            pid: s.pid,
+                            uptime: (s.time_init, s.time_now),
+                            msg: s.message.clone(),
+                        });
+                    }
                 } else {
-                    let _ = table_model.insert(Item {
-                        name: s.name.clone(),
-                        pid: 0,
-                        uptime: (0,0),
-                        msg: "not running".to_string(),
-                    });
+                    if !saved_selected.is_empty() && s.name.clone() == saved_selected {
+                        let _ = table_model.insert(Item {
+                            name: s.name.clone(),
+                            pid: 0,
+                            uptime: (0,0),
+                            msg: "not running".to_string(),
+                        }).activate();
+                    } else {
+                        let _ = table_model.insert(Item {
+                            name: s.name.clone(),
+                            pid: 0,
+                            uptime: (0,0),
+                            msg: "not running".to_string(),
+                        });
+                    }
                 }
             }
         }
         _ => {}
     }
-    table_model.activate(active);
 }
 
-// TODO maybe this should build the whole compontent for the view function instead of just getting the string
+// TODO maybe this should build the whole component for the view function instead of just getting the string
 // Either way needs TOML updates
 fn get_info(service: String) -> Option<Container<'static, Message, Theme>> {
     let info_cmd = SMCommand::Info { service_name: service }.encode().unwrap();
