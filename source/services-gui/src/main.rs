@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 use std::process::Command;
 use std::sync::Arc;
 
+use cosmic::action::cosmic;
 use cosmic::app::{Core, Settings, Task};
 use cosmic::cosmic_theme::ThemeBuilder;
 use cosmic::iced::window::close;
@@ -400,12 +401,23 @@ impl cosmic::Application for App {
 
                 let centered = cosmic::widget::container(
                     column![
-                        button_row,
-
+                        column![
+                            button_row,
+                        ]
+                        .spacing(cosmic::theme::spacing().space_s)
+                        .width(iced::Length::Fill)
+                        .align_x(iced::Alignment::End),
+                        column![
+                            cosmic::widget::text("  1. Click on any service to select it.").size(20),
+                            cosmic::widget::text("  2. With a service selected, click 'Start' or 'Stop' to start or stop the service.").size(20),
+                            cosmic::widget::text("  3. With a service selected, click 'Info' to view detailed statistics on that service.").size(20),
+                            cosmic::widget::text("  4. At any time click 'System Log' to view the system log.").size(20),
+                            cosmic::widget::text("  5. Service statistics will be automatically updated every 3 seconds.").size(20),
+                        ]
+                        .spacing(cosmic::theme::spacing().space_s)
+                        .width(iced::Length::Fill)
+                        .align_x(iced::Alignment::Start),
                     ]
-                    .spacing(cosmic::theme::spacing().space_s)
-                    .width(iced::Length::Fill)
-                    .align_x(iced::Alignment::End),
                 )
                 .width(iced::Length::Fill)
                 .height(iced::Length::Shrink)
