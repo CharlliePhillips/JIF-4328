@@ -16,35 +16,16 @@ wgpu = ["libcosmic/wgpu"]
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 tracing-log = "0.2.0"
-env_logger = "0.11"
 hex_color = { version = "3", features = ["serde"] }
-indexmap = "2"
 #TODO: for repeat_n, which is in std in 1.82
-itertools = "0.14"
-lazy_static = "1"
-log = "0.4"
-open = "5.3.2"
 palette = { version = "0.7", features = ["serde"] }
-paste = "1.0"
 ron = "0.8"
 serde = { version = "1", features = ["serde_derive"] }
-shlex = "1"
 tokio = { version = "1", features = ["sync"] }
 # Internationalization
-i18n-embed = { version = "0.15", features = [
-    "fluent-system",
-    "desktop-requester",
-] }
-i18n-embed-fl = "0.9"
-icu_collator = "1.5"
-icu_provider = { version = "1.5", features = ["sync"] }
-rust-embed = "8"
-url = "2.5"
 # TODO: required by 1.80
-home = "=0.5.9"
 chrono = "*"
 shared = { version = "0.1.0", path = "../shared" }
-bstr = "1.11.3"
 toml = { version = "0.8.20", features = ["preserve_order"] }
 
 [dependencies.libcosmic]

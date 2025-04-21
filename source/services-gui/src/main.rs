@@ -335,7 +335,7 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
     let mut saved_selected: String = String::new();
     match table_model.item(table_model.active()) {
         Some(selected) => {
-            saved_selected = selected.clone().name.clone(); //save selected item before refresh
+            saved_selected = selected.name.clone(); //save selected item before refresh
         },
         None => {}
     }
