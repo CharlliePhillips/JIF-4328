@@ -98,6 +98,15 @@ fn eval_cmd(services: &mut HashMap<String, ServiceEntry>, sm_scheme: &mut SMSche
             if let Some(service) = services.get_mut(service_name) {
                 // info!("Stopping '{}'", service.config.name);
                 result = stop(service);
+                if let Ok(_k) = result.as_mut() {
+                    let mut registry = read_registry();
+                    let registry_value = registry.remove(service_name);
+                    if let Some(s) = registry_value {
+                        services.insert(service_name.clone(), s);
+                    } else {
+                        services.remove(service_name);
+                    }
+                };
             } else {
                 warn!("stop failed: no service named '{}'", service_name);
                 result = Err(Some(TOMLMessage::String(format!("Unable to stop '{}': No such service", service_name))));
@@ -302,7 +311,7 @@ fn stop(service: &mut ServiceEntry) -> Result<Option<TOMLMessage>, Option<TOMLMe
         let _kill_ret = syscall::call::kill(service.pid, syscall::SIGKILL);
         service.running = false;
         
-        // todo: remove service from internal list if it does not exist in the registry anymore
+        // dev note: eval_cmd match statement will remove service from internal list if it does not exist in the registry anymore
         let name = service.config.name.clone();
         Ok(Some(TOMLMessage::String(format!("Stopped service '{}'", name))))
     } else {
