@@ -27,7 +27,7 @@ It is critical that a way to monitor and recover services and other daemons be i
     - The timer-based status check can detect a failing daemon if it fails to respond with valid data on the regular interval, then the service should be stopped and restarted. If the service monitor attempts to restart a service within 5(?) seconds of starting that service, it will be stopped and not restarted. Some services will have information in the kernel that is required to properly restart them.
 
 ### User Commands: 
-A separate program with the name “services” will parse the arguments passed and call the Service Monitor API accordingly to provide a user interface to the daemon. The services CLI application will open the service monitor scheme and reference it with a file descriptor. The Service Monitor API will use the getattr & setattr syscalls with to send and receive information from the CLI application. While the getattr & setattr calls are still in development the read/write syscalls will be used. A GUI alternative should also be relatively easy to build with the same Service Monitor API and libcosmic.  
+A separate program with the name “services” will parse the arguments passed and call the Service Monitor API accordingly to provide a user interface to the daemon. The services CLI application will open the service monitor scheme and reference it with a file descriptor. The Service Monitor API will use the getattr & setattr syscalls with to send and receive information from the CLI application. While the getattr & setattr calls are still in development the read/write syscalls will be used. There is also a GUI alternative that utilizes the Service Monitor API and libcosmic; the command "services-gui" allows the user to open the GUI.
 
 #### Stories for each user command:
 1. **services list:**
@@ -160,6 +160,8 @@ A separate program with the name “services” will parse the arguments passed 
    - removes the `registry.toml` entry for the specified service if it exists. If it does not exist, this command will not remove anything. This will not affect the instance of the service that is currently running, only the entry in `registry.toml`
 10. **services registry** / **services registry --help**
     - Displays a help page detailing the available commands for changing and viewing the registry.
+11. **services-gui**
+    - Opens the Service Monitor GUI.
 
 ## APIs and Message Flows 
 #### Managed Service API (new-style daemons)
@@ -329,10 +331,13 @@ if let Ok(message_scheme) = libredox::call::dup(child_scheme, b"message") {
     - A management API will be provided for each managed scheme through a `BaseScheme`. This struct holds the primary scheme for the service as well as several others containing the data needed for the service monitor. The `read` and `write` syscalls will be used to access these sub-schemes until `getattr` and `setattr` are ready. The primary scheme will be accessible through the BaseScheme using the same convention as a non-managed scheme to ensure compatibility with existing code.
 
 4. **CLI**
-    - A relatively simple program to serve as the user interface that parses command line arguments and makes the corresponding getattr/setattr calls to the Service Monitor API. It then will take any information from the Service Monitor and format it to be printed for the user. 
+    - A relatively simple program to serve as the user interface that parses command line arguments and makes the corresponding getattr/setattr calls to the Service Monitor API. It then will take any information from the Service Monitor and format it to be printed for the user.
 
-5. **Further Development**
-    - The API should allow for easy development of a GUI application, as well as an interface for a future device discovery daemon that would modify ‘registry.toml’ through the Service Manager. Additional code could be added to control services that also have the ‘service-monitor’ trait, this might lend well to this program serving as a template for more specific monitors such as for USB devices. A USB monitor could assume certain dependencies are available and begin starting devices in its own registry with its own connection to the device discovery daemon modeled after the API described here. 
+5. **GUI**
+    - A more visually-pleasing and less technical alternative to the CLI. The GUI currently encompasses all the basic functionality of the Service Monitor.
+    
+6. **Further Development**
+    - The API should allow for further development of the GUI application, as well as an interface for a future device discovery daemon that would modify ‘registry.toml’ through the Service Manager. Additional code could be added to control services that also have the ‘service-monitor’ trait, this might lend well to this program serving as a template for more specific monitors such as for USB devices. A USB monitor could assume certain dependencies are available and begin starting devices in its own registry with its own connection to the device discovery daemon modeled after the API described here.
 
 # Drawbacks
 - Registry could become giant unorganized text file 
