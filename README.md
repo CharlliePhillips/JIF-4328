@@ -3,82 +3,49 @@ A system health monitoring service for Redox OS
 
 ## Release Notes
 
-### Version 0.4.0
-#### New Features
-* Help option in command line is now complete, add `-h` or `--help` to any command for usage information
-* `services list` table is actually a table now and not plain text.
-* Refined system logging.
-* Started GUI development.
-
-#### Known Issues
-- GUI is incomplete.
-- BaseScheme will need an additional version to support services implementing SchemeBlock instead of Scheme like disk drivers.
-- Start and Stop commands do not give CLI feedback and should.
-
-### Bug Fixes
-* Resolved most compile warnings.
-* Fixed 2 regressions with `services clear`
-* Fixed timeout recovery test.
-
-### Version 0.3.0
-#### New Features
-* The registry commands 'services registry ...' can be used to view and edit the registry.
+### Version 1.0.0
+#### Features
+* Help option in command line, add `-h` or `--help` to any command for usage information
+* The service-monitor can start daemons and manage those that use the `BaseScheme` API.
+* The service monitor starts at boot and starts its registered services.
+`services start gtrand` and `services stop gtrand`
+* The commands `start` and `stop` can be used in the command line to manually start and stop registered services.
+`services-gui`
+* GUI is available for quick access to a list of services, statistics, and controls.
+`services list`
+* The command `list` can be used to see a list of all registered services and some relevant data.
+`services info gtrand`
+* The command `info` can be used to retrieve detailed data on a particular service.
+`services clear gtrand`
+* The command `clear` can be used to clear the short term data stored in a service.
+* The registry commands `services registry ...` can be used to view and edit the registry.
     - `services registry view <daemon_name>`
     - `services registry add <--old> <daemon_name> "['arg1', 'arg2'...]" <--override> "['dep1', 'dep2'...]" <scheme_path>`
     - `services registry remove <daemon_name>`
     - `services registry edit <daemon_name> <--o> "['arg1', 'arg2'...]" <scheme_path> "['dep1', 'dep2'...]"`
     - `services** / **services --help`
-    - This comes with a signifigant refactor to the way the service-monitor handles commands.
-
-* When the service monitor attempts to read from or write to a service that is not responding it will automatically try to restart it and complete the operation.
+* The service-monitor uses TOML format to communicate with CLI and GUI client.
+* When the service monitor attempts to read from or write to a service that is not responding, it will automatically try to restart it and complete the operation.
 
 #### Known Issues
-- BaseScheme will need an additional version to support services implementing SchemeBlock instead of Scheme like disk drivers.
+- BaseScheme will need an additional version to support services implementing SchemeBlock, or AsyncScheme instead of Scheme (for services like disk drivers).
+- If the GUI and CLI try to communicate with the service-monitor at the same time both will fail. The service monitor itself does not fail though, repeating the command should succeed.
+- If the "Info" tab is clicked before selecting a service, info will be opened once a selection is made. The info tab should do nothing before a service is selected.
+
+#### Squashed Bugs
+- The info and list commands now properly display services that are not running.
 - When attempting to run the service recovery test too quickly the whole OS will freeze. This is likely due to the threading used for timeout detection, other components may need to be refactored for multithreading for this to be fixed.
-- Start and Stop commands do not give CLI feedback and should.
-- Excluding the dependencies argument from `services registry edit` causes a panic
-- Error text for depends list for `services registry add` prefixes the list with 'args' instead of 'depends'
-- Depends list for `services registry add` is shown as optional, but omitting causes clap parser to demand it
+- Excluding the dependencies argument from services registry edit causes a panic
+- Error text for depends list for services registry add prefixes the list with 'args' instead of 'depends'
+- Depends list for services registry add is shown as optional, but omitting causes clap parser to demand it
+- Fixed 2 regressions with services clear and the BaseScheme API
+- Fixed timeout recovery test (gtrand2 times out when attempting to start it twice).
+- GUI table would clear current selection upon refresh.
+- GUI table would have any sorting reset upon refresh.
 
-### Bug Fixes
-* The info and list commands now properly display services that are not running.
+## Installation Guide
+[click here to see the installation guide](https://gitlab.redox-os.org/CharlliePhillips/service-monitor/-/blob/main/installation-guide.md?ref_type=heads)
 
-### Version 0.2.0
+## Detailed Design Documentation
+[click here to see the detailed design docs](https://gitlab.redox-os.org/CharlliePhillips/service-monitor/-/blob/main/detailed-design.pdf?ref_type=heads)
 
-#### New Features
-* The command 'list' can be used to see a list of all registered services and some relevant data.
-`services list`
-* The command 'info' can be used to retrieve detailed data on a particular service.
-`services info gtrand`
-* The command 'clear' can be used to clear the short term data stored in a service.
-`services clear gtrand`
-
-#### Known Issues
-* BaseScheme will need an additional version to support services implementing SchemeBlock instead of Scheme like disk drivers.
-* Moving data points around as byte arrays should be replaced with helper functions to get the byte array and translate the byte array into something useful.
-* Commands to the service monitor should be of a new enum type instead of a hard coded integer.
-
-### Version 0.1.0
-
-#### New Features
-* The service monitor starts at boot and starts its registered services
-* The commands 'start' and 'stop' can be used in the command line to start and stop registered services
-* The command 'list' can be used to list the PIDs of registered running services
-
-#### Known Issues
-* `smregistry.toml` should be moved to `/etc/services` in the redox directory
-* Reading information from a service/scheme should be removed from any specific service (such as gtrand) to prepare for moving to `getattr/setattr` in the future
-
-
-## Installation
-1. `git clone` into `cookbook/recipes` folder
-2. add the line `service-monitor = {}` to `[packages]` in `config/desktop.toml`
-3. add `service-monitor` as the last line in `cookbook/recipes/core/initfs/init.rc` 
-4. `make r.service-monitor cr.initfs desktop`
-
-## Testing
-1. launch Redox in VM and open terminal
-2. `services` starts the cli tool
-3. `services stop gtrand` will stop gtrand
-4. `services start gtrand` will start gtrand
-5. use `ps` to see running processes and `cat /scheme/sys/log` to view the log

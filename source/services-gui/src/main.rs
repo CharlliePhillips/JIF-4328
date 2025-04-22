@@ -20,6 +20,7 @@ use cosmic::iced::widget::{column, row};
 use cosmic::iced_core::{Element, Size};
 use cosmic::iced_widget::{Column, Row};
 use cosmic::prelude::*;
+use cosmic::widget::table::model::category;
 use cosmic::widget::{table, table::Entity, Container, Text};
 use cosmic::widget::{self, nav_bar};
 use cosmic::{executor, iced};
@@ -448,6 +449,8 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
         None => {}
     }
 
+    let save_sort = table_model.get_sort();
+
     *table_model = table::Model::new(vec![
         Category::Name,
         Category::Pid,
@@ -511,6 +514,10 @@ fn get_services(table_model: &mut table::SingleSelectModel<Item, Category>) {
             }
         }
         _ => {}
+    }
+    if save_sort != None {
+        let (category, ascend) = save_sort.unwrap();
+        table_model.sort(category, ascend);
     }
 }
 
