@@ -5,10 +5,11 @@ A system health monitoring service for Redox OS
 
 ### Version 1.0.0
 #### Features
+* Help option in command line, add `-h` or `--help` to any command for usage information
 * The service-monitor can start daemons and manage those that use the `BaseScheme` API.
 * The service monitor starts at boot and starts its registered services.
-`services start gtrand` and `services stop gtrand` can be used in the command line to manually start and stop registered services.
-* Help option in command line, add `-h` or `--help` to any command for usage information
+`services start gtrand` and `services stop gtrand`
+* The commands `start` and `stop` can be used in the command line to manually start and stop registered services.
 `services-gui`
 * GUI is available for quick access to a list of services, statistics, and controls.
 `services list`
