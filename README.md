@@ -44,8 +44,8 @@ A system health monitoring service for Redox OS
 - GUI table would have any sorting reset upon refresh.
 
 ## Installation Guide
-[click here to see the installation guide](https://gitlab.redox-os.org/CharlliePhillips/service-monitor/-/blob/main/installation-guide.md?ref_type=heads)
+[click here to see the installation guide](https://github.com/CharlliePhillips/JIF-4328/blob/main/installation-guide.md)
 
 ## Detailed Design Documentation
-[click here to see the detailed design docs](https://gitlab.redox-os.org/CharlliePhillips/service-monitor/-/blob/main/detailed-design.pdf?ref_type=heads)
+[click here to see the detailed design docs](https://github.com/CharlliePhillips/JIF-4328/blob/main/detailed-design.pdf)
 
